@@ -1,0 +1,23 @@
+# Copia este fichero a %APPDATA%\dictado-local\config.yaml
+# o pásalo con: python -m dictado --config config.yaml
+
+hotkey: ctrl_r
+sample_rate: 16000
+min_record_ms: 300
+max_record_s: 120
+keep_mic_open: true
+pre_roll_ms: 250
+input_device: null
+
+model: large-v3-turbo
+model_fallback: small
+device: auto
+compute_type: auto
+beam_size: 1
+vad_filter: true
+language: auto
+model_dir: null
+
+paste_restore_delay_ms: 250
+append_space: false
+indicator: true
