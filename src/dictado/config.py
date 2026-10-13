@@ -55,6 +55,9 @@ class Config:
     paste_restore_delay_ms: int = 450
     append_space: bool = False
     indicator: bool = True
+    indicator_position: str = "bottom-center"
+    indicator_monitor: str = "cursor"
+    indicator_scale: float = 1.0
     sound: bool = True
     history: bool = True
     start_with_windows: bool = True
@@ -83,6 +86,11 @@ def load_config(path: Path | None = None) -> Config:
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ValueError(f"Claves desconocidas en la configuracion: {', '.join(unknown)}")
+    if "indicator_scale" in raw and raw["indicator_scale"] is not None:
+        value = raw["indicator_scale"]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("indicator_scale tiene que ser un numero")
+        raw["indicator_scale"] = float(value)
     config = Config(**raw)
     _validate(config)
     return config
@@ -163,3 +171,10 @@ def _validate(config: Config) -> None:
         raise ValueError("paste_restore_delay_ms no puede ser negativo")
     if config.pre_roll_ms < 0:
         raise ValueError("pre_roll_ms no puede ser negativo")
+    positions = {"bottom-center", "bottom-left", "bottom-right", "top-center"}
+    if not isinstance(config.indicator_position, str) or config.indicator_position not in positions:
+        raise ValueError("indicator_position tiene que ser bottom-center, bottom-left, bottom-right o top-center")
+    if not isinstance(config.indicator_monitor, str) or config.indicator_monitor not in {"cursor", "primary"}:
+        raise ValueError("indicator_monitor tiene que ser cursor o primary")
+    if config.indicator_scale < 0.6 or config.indicator_scale > 2:
+        raise ValueError("indicator_scale tiene que estar entre 0.6 y 2")

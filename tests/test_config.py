@@ -14,6 +14,9 @@ def test_missing_file_uses_defaults(tmp_path: Path) -> None:
     assert config.device == "auto"
     assert config.paste_restore_delay_ms == 450
     assert config.indicator is True
+    assert config.indicator_position == "bottom-center"
+    assert config.indicator_monitor == "cursor"
+    assert config.indicator_scale == 1.0
     assert config.sound is True
     assert config.history is True
     assert config.start_with_windows is True
@@ -49,6 +52,34 @@ def test_frozen_app_reads_appdata_and_ignores_the_working_directory(tmp_path: Pa
     config = load_config()
     assert config.hotkey == "ctrl"
     assert config.start_with_windows is False
+
+
+def test_indicator_layout_is_optional(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "indicator_position: top-center\nindicator_monitor: primary\nindicator_scale: 1\n",
+        encoding="utf-8",
+    )
+    config = load_config(path)
+    assert config.indicator_position == "top-center"
+    assert config.indicator_monitor == "primary"
+    assert config.indicator_scale == 1.0
+
+
+def test_indicator_layout_is_checked(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text("indicator_position: arriba\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="indicator_position"):
+        load_config(path)
+    path.write_text("indicator_monitor: ambos\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="indicator_monitor"):
+        load_config(path)
+    path.write_text("indicator_scale: 3\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="indicator_scale"):
+        load_config(path)
+    path.write_text("indicator_scale: grande\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="indicator_scale"):
+        load_config(path)
 
 
 def test_model_path_joins_the_model_dir(tmp_path: Path) -> None:
