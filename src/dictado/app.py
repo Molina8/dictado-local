@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import queue
+import sys
 import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -12,7 +14,11 @@ from pathlib import Path
 import pystray
 from PIL import Image, ImageDraw
 
-from dictado.config import Config, default_log_path, load_config
+from dictado.autostart import apply_autostart
+from dictado.config import Config, default_log_path, ensure_user_config, load_config
+from dictado.cues import play_async
+from dictado.download_model import download_models, model_ready
+from dictado.history import append_history, history_path, transcript_record
 from dictado.hotkey import HotkeyMatcher, listen
 from dictado.overlay import Indicator
 from dictado.paste import foreground_window, paste_text
@@ -49,6 +55,7 @@ class DictadoApp:
         self._target = 0
         self._ready = False
         self._status = "Cargando el modelo..."
+        self._last_text = ""
         self._limit: threading.Timer | None = None
         self._listener = None
         self._icon: pystray.Icon | None = None
@@ -56,7 +63,8 @@ class DictadoApp:
 
     def run(self) -> None:
         self._configure_logging()
-        log.info("Arranque. Atajo %s.", self.config.hotkey)
+        log.info("Arranque. Atajo %s. Ejecutable %s.", self.config.hotkey, sys.executable)
+        self._sync_autostart()
         if self.config.keep_mic_open:
             try:
                 self.mic.open()
@@ -75,6 +83,9 @@ class DictadoApp:
             menu=pystray.Menu(
                 pystray.MenuItem(lambda _: self._status, lambda: None, enabled=False),
                 pystray.MenuItem(lambda _: f"Atajo: {self.config.hotkey}", lambda: None, enabled=False),
+                pystray.MenuItem(lambda _: self._last_line(), lambda: None, enabled=False),
+                pystray.MenuItem("Abrir historial", self._open_history),
+                pystray.MenuItem("Abrir configuracion", self._open_config),
                 pystray.MenuItem("Salir", self._quit),
             ),
         )
@@ -88,41 +99,92 @@ class DictadoApp:
         formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
         file_handler = RotatingFileHandler(path, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
         file_handler.setFormatter(formatter)
-        stream = logging.StreamHandler()
-        stream.setFormatter(formatter)
         root.handlers.clear()
         root.addHandler(file_handler)
-        root.addHandler(stream)
+        if sys.stderr is not None:
+            stream = logging.StreamHandler()
+            stream.setFormatter(formatter)
+            root.addHandler(stream)
+
+    def _sync_autostart(self) -> None:
+        if not getattr(sys, "frozen", False):
+            return
+        try:
+            apply_autostart(bool(self.config.start_with_windows))
+        except Exception:
+            log.exception("No se pudo actualizar el arranque con Windows")
+            return
+        log.info("Arranque con Windows: %s", bool(self.config.start_with_windows))
 
     def _load_model(self) -> None:
         try:
+            self._ensure_models()
             self.transcriber.load()
             self.transcriber.warmup()
         except FileNotFoundError as exc:
-            self._status = "Falta el modelo"
+            self._set_status("Falta el modelo", "#5b616b")
             log.error("%s", exc)
             return
         except Exception:
-            self._status = "El modelo no cargo"
+            self._set_status("El modelo no cargo", "#5b616b")
             log.exception("No se pudo cargar el modelo")
             return
         self._ready = True
-        self._status = f"Listo ({self.transcriber.model_name}, {self.transcriber.device})"
+        self._set_status(
+            f"Listo ({self.transcriber.model_name}, {self.transcriber.device})",
+            "#2f9e44",
+        )
         log.info(
             "Modelo listo: %s en %s/%s",
             self.transcriber.model_name,
             self.transcriber.device,
             self.transcriber.compute_type,
         )
-        self._paint("#2f9e44")
+
+    def _ensure_models(self) -> None:
+        names: list[str] = []
+        for name in (self.config.model, self.config.model_fallback):
+            if name and name not in names and not model_ready(self.config.model_path(name)):
+                names.append(name)
+        if not names:
+            return
+        self._set_status("Descargando el modelo...", "#1971c2")
+        log.info("Faltan modelos %s. Se descargan una vez.", ", ".join(names))
+        download_models(names, self.config.resolved_model_dir())
+
+    def _set_status(self, text: str, color: str | None = None) -> None:
+        self._status = text
+        if self._icon is None:
+            return
+        self._icon.title = text
+        if color:
+            self._icon.icon = icon_image(color)
 
     def _paint(self, color: str) -> None:
         if self._icon is not None:
             self._icon.icon = icon_image(color)
 
+    def _last_line(self) -> str:
+        if not self._last_text:
+            return "Sin transcripciones"
+        text = self._last_text.replace("\n", " ")
+        if len(text) > 80:
+            text = text[:77] + "..."
+        return f"Ultima: {text}"
+
+    def _open_history(self, _icon: pystray.Icon, _item: pystray.MenuItem) -> None:
+        path = history_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            path.write_text("", encoding="utf-8")
+        os.startfile(path)  # type: ignore[attr-defined]
+
+    def _open_config(self, _icon: pystray.Icon, _item: pystray.MenuItem) -> None:
+        os.startfile(ensure_user_config())  # type: ignore[attr-defined]
+
     def _on_press(self) -> None:
         if not self._ready:
-            log.info("Atajo ignorado: %s. Si falta el modelo: python -m dictado.download_model", self._status)
+            log.info("Atajo ignorado: %s. Si falta el modelo, se intenta descargar al arrancar.", self._status)
             return
         hwnd = foreground_window()
         with self._state:
@@ -142,6 +204,8 @@ class DictadoApp:
             return
         self.indicator.show_recording()
         self._paint("#c92a2a")
+        if self.config.sound:
+            play_async("record")
         self._arm_limit(generation)
         log.info("Grabando (gen %s, hwnd %s)", generation, hwnd)
 
@@ -179,6 +243,8 @@ class DictadoApp:
             return
         self.indicator.show_transcribing()
         self._paint("#e67700")
+        if self.config.sound:
+            play_async("done")
         self._jobs.put((generation, hwnd, audio))
 
     def _work(self) -> None:
@@ -196,6 +262,9 @@ class DictadoApp:
                     transcript.duration_s,
                 )
                 if transcript.text:
+                    self._last_text = transcript.text
+                    if self.config.history:
+                        self._remember(transcript)
                     paste_text(transcript.text, self.config.paste_restore_delay_ms, hwnd or None)
             except Exception:
                 log.exception("Fallo al transcribir o pegar")
@@ -206,6 +275,20 @@ class DictadoApp:
                 if generation == current and not recording:
                     self.indicator.hide()
                     self._paint("#2f9e44")
+
+    def _remember(self, transcript) -> None:
+        try:
+            append_history(
+                transcript_record(
+                    text=transcript.text,
+                    language=transcript.language,
+                    duration_s=transcript.duration_s,
+                    model=transcript.model,
+                    device=transcript.device,
+                )
+            )
+        except Exception:
+            log.exception("No se pudo guardar el historial")
 
     def _quit(self, icon: pystray.Icon, _item: pystray.MenuItem) -> None:
         log.info("Saliendo")

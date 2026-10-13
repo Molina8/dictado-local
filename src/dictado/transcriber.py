@@ -25,19 +25,52 @@ def force_offline() -> None:
 def enable_cuda_dlls() -> None:
     """Make the pip CUDA libraries visible to ctranslate2 on Windows."""
     import importlib.util
+    import sys
+
+    seen: set[str] = set()
+
+    def add_dir(path: Path) -> None:
+        if not path.is_dir() or not any(path.glob("*.dll")):
+            return
+        resolved = str(path.resolve())
+        if resolved in seen:
+            return
+        seen.add(resolved)
+        if hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(resolved)
+        os.environ["PATH"] = resolved + os.pathsep + os.environ.get("PATH", "")
 
     packages = ("nvidia.cublas", "nvidia.cuda_runtime", "nvidia.cudnn", "nvidia.cuda_nvrtc")
+    roots: list[Path] = []
     for name in packages:
         spec = importlib.util.find_spec(name)
         if spec is None or not spec.submodule_search_locations:
             continue
         for root in spec.submodule_search_locations:
-            bin_dir = Path(root) / "bin"
-            if not bin_dir.is_dir():
-                continue
-            if hasattr(os, "add_dll_directory"):
-                os.add_dll_directory(str(bin_dir))
-            os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
+            roots.append(Path(root) / "bin")
+
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        search = [exe_dir]
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            search.append(Path(meipass))
+        internal = exe_dir / "_internal"
+        if internal.is_dir():
+            search.append(internal)
+        for folder in search:
+            nvidia = folder / "nvidia"
+            if nvidia.is_dir():
+                roots.extend(nvidia.glob("*/bin"))
+            elif any(folder.glob("cublas64_12.dll")) or any(folder.glob("cudnn64_9.dll")):
+                roots.append(folder)
+
+    for directory in roots:
+        add_dir(directory)
+    if seen:
+        log.info("Bibliotecas CUDA en %s", os.pathsep.join(seen))
+    else:
+        log.warning("No encontre las bibliotecas CUDA de NVIDIA")
 
 
 @dataclass
