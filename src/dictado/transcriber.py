@@ -73,6 +73,32 @@ def enable_cuda_dlls() -> None:
         log.warning("No encontre las bibliotecas CUDA de NVIDIA")
 
 
+def cuda_available() -> bool:
+    """True when ctranslate2 can see a CUDA device. Any failure means CPU."""
+    try:
+        enable_cuda_dlls()
+        import ctranslate2
+
+        return int(ctranslate2.get_cuda_device_count()) > 0
+    except Exception:
+        log.warning("No se pudo comprobar CUDA. Sigo en CPU.", exc_info=True)
+        return False
+
+
+def models_for_device(config: Config, cuda_ok: bool) -> list[str]:
+    """Weights to fetch before load(). Without CUDA, only the CPU model."""
+    use_cuda = bool(cuda_ok) and config.device in {"auto", "cuda"}
+    chosen: list[str] = []
+    if use_cuda and config.model:
+        chosen.append(config.model)
+    fallback = config.model_fallback
+    if fallback and fallback not in chosen:
+        chosen.append(fallback)
+    if not chosen and config.model:
+        chosen.append(config.model)
+    return chosen
+
+
 @dataclass
 class Transcript:
     text: str
@@ -93,11 +119,9 @@ class Transcriber:
 
     def load(self) -> None:
         force_offline()
-        enable_cuda_dlls()
-        import ctranslate2
         from faster_whisper import WhisperModel
 
-        cuda_ok = ctranslate2.get_cuda_device_count() > 0
+        cuda_ok = cuda_available()
         requested = self.config.device
         if requested in {"auto", "cuda"} and cuda_ok:
             compute = "float16" if self.config.compute_type == "auto" else self.config.compute_type

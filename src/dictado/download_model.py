@@ -43,6 +43,18 @@ def download_models(names: list[str], model_dir: Path, fetch=None) -> list[Path]
     return saved
 
 
+def download_best_effort(names: list[str], model_dir: Path, fetch=None) -> list[str]:
+    """Download each model. Returns the names that failed. One failure does not stop the rest."""
+    failed: list[str] = []
+    for name in names:
+        try:
+            download_models([name], model_dir, fetch=fetch)
+        except Exception:
+            log.exception("No se pudo descargar %s", name)
+            failed.append(name)
+    return failed
+
+
 def _say(message: str) -> None:
     log.info(message)
     if sys.stdout is None:
