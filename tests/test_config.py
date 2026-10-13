@@ -13,6 +13,10 @@ def test_missing_file_uses_defaults(tmp_path: Path) -> None:
     assert config.language == "auto"
     assert config.device == "auto"
     assert config.paste_restore_delay_ms == 450
+    assert config.indicator is True
+    assert config.sound is True
+    assert config.history is True
+    assert config.start_with_windows is True
 
 
 def test_unknown_key_is_rejected(tmp_path: Path) -> None:
@@ -27,6 +31,24 @@ def test_language_and_device_are_checked(tmp_path: Path) -> None:
     path.write_text("language: fr\n", encoding="utf-8")
     with pytest.raises(ValueError, match="language"):
         load_config(path)
+
+
+def test_frozen_app_reads_appdata_and_ignores_the_working_directory(tmp_path: Path, monkeypatch) -> None:
+    import sys
+
+    roaming = tmp_path / "Roaming"
+    folder = roaming / "dictado-local"
+    folder.mkdir(parents=True)
+    (folder / "config.yaml").write_text("hotkey: ctrl\nstart_with_windows: false\n", encoding="utf-8")
+    (tmp_path / "config.yaml").write_text("hotkey: ctrl+shift\n", encoding="utf-8")
+    monkeypatch.delenv("DICTADO_CONFIG", raising=False)
+    monkeypatch.setenv("APPDATA", str(roaming))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "DictadoLocal.exe"))
+    config = load_config()
+    assert config.hotkey == "ctrl"
+    assert config.start_with_windows is False
 
 
 def test_model_path_joins_the_model_dir(tmp_path: Path) -> None:

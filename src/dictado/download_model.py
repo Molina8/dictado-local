@@ -3,16 +3,57 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
+import sys
 from pathlib import Path
 
 from dictado.config import default_model_dir
 
+log = logging.getLogger("dictado.download")
 
-def main(argv: list[str] | None = None) -> None:
+
+def model_ready(directory: Path) -> bool:
+    return (directory / "model.bin").is_file()
+
+
+def download_models(names: list[str], model_dir: Path, fetch=None) -> list[Path]:
+    """Download any model that is not already in `model_dir`. Returns destinations."""
     os.environ["HF_HUB_OFFLINE"] = "0"
     os.environ["TRANSFORMERS_OFFLINE"] = "0"
     os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+    os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+    os.environ["TQDM_DISABLE"] = "1"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    if fetch is None:
+        from faster_whisper.utils import download_model as fetch
+
+    saved: list[Path] = []
+    for name in names:
+        dest = model_dir / Path(name).name
+        if model_ready(dest):
+            log.info("El modelo %s ya esta en %s", name, dest)
+            saved.append(dest)
+            continue
+        dest.mkdir(parents=True, exist_ok=True)
+        _say(f"Descargando {name} en {dest}")
+        fetch(name, output_dir=str(dest), local_files_only=False)
+        _say(f"Listo {name}: {dest}")
+        saved.append(dest)
+    return saved
+
+
+def _say(message: str) -> None:
+    log.info(message)
+    if sys.stdout is None:
+        return
+    try:
+        print(message, flush=True)
+    except Exception:
+        return
+
+
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="dictado.download_model",
         description="Descarga modelos faster-whisper a la carpeta local",
@@ -26,15 +67,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     names = args.models or ["large-v3-turbo", "small"]
     root = Path(args.model_dir) if args.model_dir else default_model_dir()
-    root.mkdir(parents=True, exist_ok=True)
-    from faster_whisper.utils import download_model
-
-    for name in names:
-        dest = root / Path(name).name
-        dest.mkdir(parents=True, exist_ok=True)
-        print(f"Descargando {name} en {dest}", flush=True)
-        saved = download_model(name, output_dir=str(dest), local_files_only=False)
-        print(f"Listo {name}: {saved}", flush=True)
+    download_models(names, root)
 
 
 if __name__ == "__main__":

@@ -1,47 +1,79 @@
 # Dictado local
 
-Dictado push-to-talk para Windows. Mantienes una tecla, sueltas, y el texto se pega en la ventana que tenías activa. La transcripción corre en tu máquina con faster-whisper. En ejecución no llama a internet.
+Dictado push-to-talk para Windows. Mantienes una tecla, sueltas, y el texto se pega en la ventana que tenías activa. La transcripción corre en tu máquina con faster-whisper. Con el modelo ya en disco no llama a internet.
 
 El diseño se apoya en el comportamiento observable de Wispr Flow (atajo mantenido, indicador, pegado al soltar). No incluye código ni assets de ese programa. El detalle está en [docs/rea_analisis_wispr.md](docs/rea_analisis_wispr.md).
 
 ## Qué necesitas
 
 - Windows 10 o 11
-- Python 3.11
 - Un micro
-- Para el modelo grande, una GPU NVIDIA. Las librerías CUDA 12 van en `requirements.txt` (`cublas`, cudnn 9, runtime y nvrtc); no hace falta el toolkit de NVIDIA. Si CUDA no arranca, el programa sigue con el modelo `small` en CPU.
+- Para el modelo grande, una GPU NVIDIA. El `.exe` ya lleva las librerías CUDA 12 (cublas, cuDNN 9, runtime y nvrtc). No hace falta el toolkit de NVIDIA ni tener Python instalado.
+- Si CUDA no arranca, el programa sigue con el modelo `small` en CPU.
 
 Probado en una RTX 5070 Ti de 16 GB.
 
-## Instalación
+La instalación desde código, para desarrollar, pide Python 3.11.
+
+## Instalar la app (sin Python)
+
+Hace falta el ejecutable ya generado en `dist\DictadoLocal`. En este repo se construye con:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements.txt
-.\.venv\Scripts\python -m dictado.download_model
+py -3.11 -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt pyinstaller==6.16.0
+.\packaging\build.ps1
 ```
 
-`download_model` es el único paso que descarga de Hugging Face (`large-v3-turbo` y `small`). Los pesos quedan en `%LOCALAPPDATA%\dictado-local\models`.
+Luego, un doble clic en `install.cmd` (o `powershell -ExecutionPolicy Bypass -File .\install.ps1`). El script:
+
+- copia la carpeta a `%LOCALAPPDATA%\Programs\dictado-local`
+- crea un acceso directo en el menú Inicio y otro en el escritorio, los dos se llaman **Dictado local**
+- activa el arranque con Windows en `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`DictadoLocal`)
+- abre la app
+
+No pide administrador. El proceso no abre ventana de consola: se queda en la bandeja, junto al reloj. Si no ves el icono, abre la flecha de iconos ocultos.
+
+Para abrirlo a mano: tecla Windows, escribe `Dictado local` y pulsa Enter. También vale el acceso directo del escritorio, o el ejecutable:
+
+`%LOCALAPPDATA%\Programs\dictado-local\DictadoLocal.exe`
+
+La primera vez, si faltan los pesos, la app los descarga de Hugging Face a `%LOCALAPPDATA%\dictado-local\models` (`large-v3-turbo` y, si hace falta el plan B, `small`). El icono se pone azul mientras descarga y verde cuando está lista. Después de eso trabaja sin red.
 
 ## Uso
 
-```powershell
-.\.venv\Scripts\python -m dictado
-```
+Mantén Control derecho para grabar y suelta para transcribir y pegar. El idioma se detecta solo entre español e inglés. Mientras grabas sale una barra abajo en el centro (roja al grabar, naranja al transcribir) y suena un pitido corto al empezar y al soltar.
 
-Aparece un icono en la bandeja. Mantén Control derecho para grabar y suelta para transcribir y pegar. El idioma se detecta solo entre español e inglés.
+En el icono de la bandeja: estado, última frase, historial, configuración y salir.
 
-La primera vez copia `config.example.yaml` a `%APPDATA%\dictado-local\config.yaml` si quieres cambiar el atajo u otra cosa. También vale `python -m dictado --config ruta\config.yaml`.
+El historial es `%LOCALAPPDATA%\dictado-local\history.jsonl` (una línea JSON por transcripción, se queda con las 2000 más nuevas).
+
+La primera vez el instalador copia `config.example.yaml` a `%APPDATA%\dictado-local\config.yaml` si aún no existe. Desde la bandeja, "Abrir configuracion" abre ese fichero. También vale, en el modo de desarrollo, `python -m dictado --config ruta\config.yaml`.
 
 Atajos útiles en el YAML: `ctrl_r` (solo el derecho), `ctrl` (cualquiera de los dos) o `ctrl+shift`. El atajo no se traga la tecla: el sistema también la recibe.
+
+| Clave | Qué hace |
+| --- | --- |
+| `hotkey` | Atajo que hay que mantener |
+| `model` | `large-v3-turbo` por defecto |
+| `model_fallback` | `small` si CUDA falla |
+| `device` | `auto`, `cuda` o `cpu` |
+| `language` | `auto`, `es` o `en` |
+| `indicator` | Barra de grabación |
+| `sound` | Pitidos al grabar y al soltar |
+| `history` | Guardar transcripciones |
+| `start_with_windows` | Al abrir el `.exe`, crea o quita la clave Run. En el modo Python no toca el registro |
+| `model_dir` | Carpeta de los modelos. Vacío usa `%LOCALAPPDATA%\dictado-local\models` |
+
+Para no arrancar con Windows, pon `start_with_windows: false`, cierra la app y ábrela otra vez.
 
 ## Pegado
 
 Al soltar, el programa guarda el portapapeles, copia el texto, envía Ctrl+V a la ventana que estaba delante al empezar el gesto y restaura lo que había. La barra de estado no roba el foco.
 
-Si el modelo no está descargado, la bandeja sigue abierta y el atajo no graba. El log (`%LOCALAPPDATA%\dictado-local\logs\dictado.log`) indica el comando de descarga.
-
 ## Medir una transcripción
+
+Desde el entorno de desarrollo:
 
 ```powershell
 .\.venv\Scripts\python -m dictado.bench archivo.wav
@@ -49,12 +81,18 @@ Si el modelo no está descargado, la bandeja sigue abierta y el atajo no graba. 
 
 Carga el modelo, calienta con silencio y cronometra el wav con los mismos ajustes que la app (haz 1, temperatura 0, VAD). El objetivo de referencia es transcribir unos 10 s de audio en menos de 1,5 s ya en caliente.
 
-## Pruebas
+## Desarrollo
 
 ```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python -m dictado.download_model
+.\.venv\Scripts\python -m dictado
 .\.venv\Scripts\python -m pytest
 ```
 
+`download_model` es el único paso del modo desarrollo que descarga de Hugging Face. El `.exe` hace esa descarga solo si al arrancar no encuentra `model.bin`.
+
 ## Privacidad
 
-Con el modelo ya en disco, el proceso fuerza `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE` y `HF_HUB_DISABLE_TELEMETRY`, y abre Whisper con `local_files_only=True`. No hay cuenta ni telemetría propia.
+Con el modelo ya en disco, el proceso fuerza `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE` y `HF_HUB_DISABLE_TELEMETRY`, y abre Whisper con `local_files_only=True`. No hay cuenta ni telemetría propia. La excepción es el primer arranque sin pesos: ahí sí descarga el modelo.

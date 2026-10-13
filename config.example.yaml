@@ -21,3 +21,6 @@ model_dir: null
 paste_restore_delay_ms: 450
 append_space: false
 indicator: true
+sound: true
+history: true
+start_with_windows: true

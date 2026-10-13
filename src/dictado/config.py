@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,9 @@ class Config:
     paste_restore_delay_ms: int = 450
     append_space: bool = False
     indicator: bool = True
+    sound: bool = True
+    history: bool = True
+    start_with_windows: bool = True
 
     def resolved_model_dir(self) -> Path:
         if self.model_dir:
@@ -88,6 +92,16 @@ def _discover_config_path() -> Path | None:
     env = os.environ.get("DICTADO_CONFIG")
     if env:
         return Path(env)
+    # A frozen app launched from the Run key inherits System32 as the working
+    # directory. Prefer the user config over whatever sits in that folder.
+    if getattr(sys, "frozen", False):
+        default = default_config_path()
+        if default.is_file():
+            return default
+        bundled = Path(sys.executable).resolve().parent / "config.yaml"
+        if bundled.is_file():
+            return bundled
+        return None
     local = Path.cwd() / "config.yaml"
     if local.is_file():
         return local
@@ -95,6 +109,39 @@ def _discover_config_path() -> Path | None:
     if default.is_file():
         return default
     return None
+
+
+def example_config_path() -> Path | None:
+    candidates: list[Path] = []
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates.append(exe_dir / "config.example.yaml")
+        candidates.append(exe_dir / "_internal" / "config.example.yaml")
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidates.append(Path(meipass) / "config.example.yaml")
+    candidates.append(Path.cwd() / "config.example.yaml")
+    candidates.append(Path(__file__).resolve().parents[2] / "config.example.yaml")
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
+
+
+def ensure_user_config() -> Path:
+    path = default_config_path()
+    if path.is_file():
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    example = example_config_path()
+    if example is not None:
+        path.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        path.write_text(
+            "hotkey: ctrl_r\nindicator: true\nsound: true\nhistory: true\nstart_with_windows: true\n",
+            encoding="utf-8",
+        )
+    return path
 
 
 def _validate(config: Config) -> None:
