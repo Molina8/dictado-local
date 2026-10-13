@@ -42,7 +42,7 @@ La primera vez, si faltan los pesos, la app los descarga de Hugging Face a `%LOC
 
 ## Uso
 
-Mantén Control derecho para grabar y suelta para transcribir y pegar. El idioma se detecta solo entre español e inglés. Mientras grabas sale una barra abajo en el centro (roja al grabar, naranja al transcribir) y suena un pitido corto al empezar y al soltar.
+Mantén Control derecho para grabar y suelta para transcribir y pegar. El idioma se detecta solo entre español e inglés. Mientras grabas sale una pastilla oscura abajo en el centro, con unas barras que suben con la voz. Al soltar pasa a unos puntos y, si el texto se pega, muestra un visto un momento. Si algo falla, un aviso breve. La pastilla no sale en la barra de tareas, no roba el foco y los clics la atraviesan. Suena un pitido corto al empezar y al soltar.
 
 En el icono de la bandeja: estado, última frase, historial, configuración y salir.
 
@@ -59,7 +59,10 @@ Atajos útiles en el YAML: `ctrl_r` (solo el derecho), `ctrl` (cualquiera de los
 | `model_fallback` | `small` si CUDA falla |
 | `device` | `auto`, `cuda` o `cpu` |
 | `language` | `auto`, `es` o `en` |
-| `indicator` | Barra de grabación |
+| `indicator` | Pastilla de estado |
+| `indicator_position` | `bottom-center` (por defecto), `bottom-left`, `bottom-right` o `top-center` |
+| `indicator_monitor` | `cursor` (el monitor del ratón) o `primary` |
+| `indicator_scale` | Tamaño. `1` es el normal, de `0.6` a `2` |
 | `sound` | Pitidos al grabar y al soltar |
 | `history` | Guardar transcripciones |
 | `start_with_windows` | Al abrir el `.exe`, crea o quita la clave Run. En el modo Python no toca el registro |
@@ -69,7 +72,7 @@ Para no arrancar con Windows, pon `start_with_windows: false`, cierra la app y �
 
 ## Pegado
 
-Al soltar, el programa guarda el portapapeles, copia el texto, envía Ctrl+V a la ventana que estaba delante al empezar el gesto y restaura lo que había. La barra de estado no roba el foco.
+Al soltar, el programa guarda el portapapeles, copia el texto, envía Ctrl+V a la ventana que estaba delante al empezar el gesto y restaura lo que había. La pastilla no roba el foco.
 
 ## Medir una transcripción
 

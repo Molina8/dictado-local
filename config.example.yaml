@@ -21,6 +21,12 @@ model_dir: null
 paste_restore_delay_ms: 450
 append_space: false
 indicator: true
+# bottom-center, bottom-left, bottom-right o top-center
+indicator_position: bottom-center
+# cursor (monitor del ratón) o primary
+indicator_monitor: cursor
+# 1 es el tamaño normal. Vale de 0.6 a 2.
+indicator_scale: 1.0
 sound: true
 history: true
 start_with_windows: true

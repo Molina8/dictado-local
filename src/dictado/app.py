@@ -20,7 +20,7 @@ from dictado.cues import play_async
 from dictado.download_model import download_models, model_ready
 from dictado.history import append_history, history_path, transcript_record
 from dictado.hotkey import HotkeyMatcher, listen
-from dictado.overlay import Indicator
+from dictado.overlay import BAR_COUNT, Indicator
 from dictado.paste import foreground_window, paste_text
 from dictado.recorder import Microphone
 from dictado.transcriber import Transcriber
@@ -46,8 +46,15 @@ class DictadoApp:
             device=config.input_device,
             keep_open=config.keep_mic_open,
             pre_roll_ms=config.pre_roll_ms,
+            level_bars=BAR_COUNT,
         )
-        self.indicator = Indicator(config.indicator)
+        self.indicator = Indicator(
+            config.indicator,
+            position=config.indicator_position,
+            monitor=config.indicator_monitor,
+            scale=config.indicator_scale,
+            level_source=self.mic.levels,
+        )
         self._jobs: queue.Queue = queue.Queue()
         self._state = threading.Lock()
         self._generation = 0
@@ -200,9 +207,9 @@ class DictadoApp:
             log.exception("No se pudo grabar")
             with self._state:
                 self._recording = False
-            self.indicator.hide()
+            self.indicator.show_error(generation)
             return
-        self.indicator.show_recording()
+        self.indicator.show_listening(generation)
         self._paint("#c92a2a")
         if self.config.sound:
             play_async("record")
@@ -238,10 +245,10 @@ class DictadoApp:
         duration_ms = (len(audio) * 1000 / self.config.sample_rate) if self.config.sample_rate else 0
         if duration_ms < self.config.min_record_ms:
             log.info("Grabacion corta (%.0f ms), se ignora", duration_ms)
-            self.indicator.hide()
+            self.indicator.hide(generation)
             self._paint("#2f9e44")
             return
-        self.indicator.show_transcribing()
+        self.indicator.show_transcribing(generation)
         self._paint("#e67700")
         if self.config.sound:
             play_async("done")
@@ -253,6 +260,8 @@ class DictadoApp:
             if item is None:
                 return
             generation, hwnd, audio = item
+            failed = False
+            has_text = False
             try:
                 transcript = self.transcriber.transcribe(audio)
                 log.info(
@@ -262,18 +271,25 @@ class DictadoApp:
                     transcript.duration_s,
                 )
                 if transcript.text:
+                    has_text = True
                     self._last_text = transcript.text
                     if self.config.history:
                         self._remember(transcript)
                     paste_text(transcript.text, self.config.paste_restore_delay_ms, hwnd or None)
             except Exception:
+                failed = True
                 log.exception("Fallo al transcribir o pegar")
             finally:
                 with self._state:
                     current = self._generation
                     recording = self._recording
                 if generation == current and not recording:
-                    self.indicator.hide()
+                    if failed:
+                        self.indicator.show_error(generation)
+                    elif has_text:
+                        self.indicator.show_ready(generation)
+                    else:
+                        self.indicator.hide(generation)
                     self._paint("#2f9e44")
 
     def _remember(self, transcript) -> None:
