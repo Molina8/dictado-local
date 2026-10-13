@@ -4,28 +4,28 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
+import pathlib
 import queue
 import sys
 import threading
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 import pystray
 from PIL import Image, ImageDraw
 
-from dictado.autostart import apply_autostart
+from dictado.backends import BACKEND_MLX, select_backend
 from dictado.config import Config, default_log_path, ensure_user_config, load_config
-from dictado.cues import play_async
 from dictado.download_model import download_best_effort, model_ready
 from dictado.history import append_history, history_path, transcript_record
 from dictado.hotkey import HotkeyMatcher, listen
-from dictado.overlay import BAR_COUNT, Indicator
-from dictado.paste import foreground_window, paste_text
+from dictado.permissions import PermissionPrompt, microphone_permission_denied
 from dictado.recorder import Microphone
 from dictado.transcriber import Transcriber, cuda_available, models_for_device
 
 log = logging.getLogger("dictado")
+
+#: Same bar count the Windows pill and the recorder agree on.
+BAR_COUNT = 9
 
 
 def icon_image(color: str) -> Image.Image:
@@ -40,6 +40,7 @@ def icon_image(color: str) -> Image.Image:
 class DictadoApp:
     def __init__(self, config: Config) -> None:
         self.config = config
+        self.platform = _platform()
         self.transcriber = Transcriber(config)
         self.mic = Microphone(
             sample_rate=config.sample_rate,
@@ -48,13 +49,14 @@ class DictadoApp:
             pre_roll_ms=config.pre_roll_ms,
             level_bars=BAR_COUNT,
         )
-        self.indicator = Indicator(
+        self.indicator = self.platform.Indicator(
             config.indicator,
             position=config.indicator_position,
             monitor=config.indicator_monitor,
             scale=config.indicator_scale,
             level_source=self.mic.levels,
         )
+        self._permission = PermissionPrompt(self._set_status, self.platform.open_settings)
         self._jobs: queue.Queue = queue.Queue()
         self._state = threading.Lock()
         self._generation = 0
@@ -71,12 +73,16 @@ class DictadoApp:
     def run(self) -> None:
         self._configure_logging()
         log.info("Arranque. Atajo %s. Ejecutable %s.", self.config.hotkey, sys.executable)
+        self._check_accessibility()
         self._sync_autostart()
         if self.config.keep_mic_open:
             try:
                 self.mic.open()
-            except Exception:
-                log.exception("No se pudo abrir el microfono")
+            except Exception as exc:
+                if getattr(self.platform, "is_macos", False) and microphone_permission_denied(exc):
+                    self._permission.microphone_missing()
+                else:
+                    log.exception("No se pudo abrir el microfono")
                 self._status = "Sin microfono"
         self._worker.start()
         threading.Thread(target=self._load_model, name="dictado-model", daemon=True).start()
@@ -96,7 +102,7 @@ class DictadoApp:
                 pystray.MenuItem("Salir", self._quit),
             ),
         )
-        self._icon.run()
+        self.platform.start_icon(self._icon)
 
     def _configure_logging(self) -> None:
         path = default_log_path()
@@ -113,15 +119,21 @@ class DictadoApp:
             stream.setFormatter(formatter)
             root.addHandler(stream)
 
+    def _check_accessibility(self) -> None:
+        checker = getattr(self.platform, "accessibility_trusted", None)
+        if checker is None or checker(prompt=True):
+            return
+        self._permission.accessibility_missing()
+
     def _sync_autostart(self) -> None:
         if not getattr(sys, "frozen", False):
             return
         try:
-            apply_autostart(bool(self.config.start_with_windows))
+            self.platform.apply_autostart(bool(self.config.start_with_windows))
         except Exception:
-            log.exception("No se pudo actualizar el arranque con Windows")
+            log.exception("No se pudo actualizar el arranque automatico")
             return
-        log.info("Arranque con Windows: %s", bool(self.config.start_with_windows))
+        log.info("Arranque automatico: %s", bool(self.config.start_with_windows))
 
     def _load_model(self) -> None:
         try:
@@ -149,7 +161,7 @@ class DictadoApp:
         )
 
     def _ensure_models(self) -> None:
-        wanted = models_for_device(self.config, cuda_available())
+        wanted = models_for_device(self.config, self._cuda_ok())
         missing = [name for name in wanted if name and not model_ready(self.config.model_path(name))]
         if not missing:
             return
@@ -161,6 +173,12 @@ class DictadoApp:
             raise RuntimeError("No se pudo descargar ningun modelo (" + ", ".join(missing) + ")")
         if len(ready) < len(wanted):
             log.warning("Solo quedaron listos: %s", ", ".join(ready))
+
+    def _cuda_ok(self) -> bool:
+        # Only the CUDA path probes ctranslate2; darwin is mlx or CPU int8.
+        if select_backend(self.config) == BACKEND_MLX:
+            return False
+        return cuda_available()
 
     def _set_status(self, text: str, color: str | None = None) -> None:
         self._status = text
@@ -187,37 +205,39 @@ class DictadoApp:
         path.parent.mkdir(parents=True, exist_ok=True)
         if not path.exists():
             path.write_text("", encoding="utf-8")
-        os.startfile(path)  # type: ignore[attr-defined]
+        self.platform.open_path(path)
 
     def _open_config(self, _icon: pystray.Icon, _item: pystray.MenuItem) -> None:
-        os.startfile(ensure_user_config())  # type: ignore[attr-defined]
+        self.platform.open_path(ensure_user_config())
 
     def _on_press(self) -> None:
         if not self._ready:
             log.info("Atajo ignorado: %s. Si falta el modelo, se intenta descargar al arrancar.", self._status)
             return
-        hwnd = foreground_window()
+        target = self.platform.foreground_window()
         with self._state:
             if self._recording:
                 return
             self._generation += 1
             generation = self._generation
             self._recording = True
-            self._target = hwnd
+            self._target = target
         try:
             self.mic.start()
-        except Exception:
+        except Exception as exc:
             log.exception("No se pudo grabar")
             with self._state:
                 self._recording = False
             self.indicator.show_error(generation)
+            if getattr(self.platform, "is_macos", False) and microphone_permission_denied(exc):
+                self._permission.microphone_missing()
             return
         self.indicator.show_listening(generation)
         self._paint("#c92a2a")
         if self.config.sound:
-            play_async("record")
+            self.platform.play_async("record")
         self._arm_limit(generation)
-        log.info("Grabando (gen %s, hwnd %s)", generation, hwnd)
+        log.info("Grabando (gen %s, destino %s)", generation, target)
 
     def _arm_limit(self, generation: int) -> None:
         if self._limit is not None:
@@ -240,7 +260,7 @@ class DictadoApp:
                 return
             self._recording = False
             generation = self._generation
-            hwnd = self._target
+            target = self._target
         if self._limit is not None:
             self._limit.cancel()
             self._limit = None
@@ -254,15 +274,15 @@ class DictadoApp:
         self.indicator.show_transcribing(generation)
         self._paint("#e67700")
         if self.config.sound:
-            play_async("done")
-        self._jobs.put((generation, hwnd, audio))
+            self.platform.play_async("done")
+        self._jobs.put((generation, target, audio))
 
     def _work(self) -> None:
         while True:
             item = self._jobs.get()
             if item is None:
                 return
-            generation, hwnd, audio = item
+            generation, target, audio = item
             failed = False
             has_text = False
             try:
@@ -278,7 +298,11 @@ class DictadoApp:
                     self._last_text = transcript.text
                     if self.config.history:
                         self._remember(transcript)
-                    paste_text(transcript.text, self.config.paste_restore_delay_ms, hwnd or None)
+                    self.platform.paste_text(
+                        transcript.text,
+                        self.config.paste_restore_delay_ms,
+                        target or None,
+                    )
             except Exception:
                 failed = True
                 log.exception("Fallo al transcribir o pegar")
@@ -324,11 +348,26 @@ class DictadoApp:
         icon.stop()
 
 
+def _platform():
+    from dictado.platform import get_platform
+
+    return get_platform()
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="dictado", description="Dictado local push-to-talk")
     parser.add_argument("--config", default=None, help="Ruta a un config.yaml")
+    parser.add_argument(
+        "--selftest",
+        action="store_true",
+        help="Comprueba import de plataforma y backend; sale con 0",
+    )
     args = parser.parse_args(argv)
-    config = load_config(Path(args.config) if args.config else None)
+    config = load_config(pathlib.Path(args.config) if args.config else None)
+    if args.selftest:
+        _platform()
+        print("selftest ok:", select_backend(config), flush=True)
+        return
     DictadoApp(config).run()
 
 

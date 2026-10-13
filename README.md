@@ -1,6 +1,6 @@
 # Dictado local
 
-Dictado push-to-talk para Windows. Mantienes una tecla, sueltas, y el texto se pega en la ventana que tenías activa. La transcripción corre en tu máquina con faster-whisper. Con el modelo ya en disco no llama a internet.
+Dictado push-to-talk para Windows y macOS (Apple Silicon). Mantienes una tecla, sueltas, y el texto se pega en la ventana que tenías activa. La transcripción corre en tu máquina con faster-whisper (Windows, CUDA o CPU) o mlx-whisper (Mac M1/M2). Con el modelo ya en disco no llama a internet.
 
 El diseño se apoya en el comportamiento observable de Wispr Flow (atajo mantenido, indicador, pegado al soltar). No incluye código ni assets de ese programa. El detalle está en [docs/rea_analisis_wispr.md](docs/rea_analisis_wispr.md).
 
@@ -65,7 +65,7 @@ Atajos útiles en el YAML: `ctrl_r` (solo el derecho), `ctrl` (cualquiera de los
 | `hotkey` | Atajo que hay que mantener |
 | `model` | `large-v3-turbo` por defecto |
 | `model_fallback` | `small` si CUDA falla |
-| `device` | `auto`, `cuda` o `cpu` |
+| `device` | `auto`, `cuda`, `cpu` o `mlx` (`mlx` solo Mac M1/M2) |
 | `language` | `auto`, `es` o `en` |
 | `indicator` | Pastilla de estado |
 | `indicator_position` | `bottom-center` (por defecto), `bottom-left`, `bottom-right` o `top-center` |
@@ -77,6 +77,32 @@ Atajos útiles en el YAML: `ctrl_r` (solo el derecho), `ctrl` (cualquiera de los
 | `model_dir` | Carpeta de los modelos. Vacío usa `%LOCALAPPDATA%\dictado-local\models` |
 
 Para no arrancar con Windows, pon `start_with_windows: false`, cierra la app y ábrela otra vez.
+
+## macOS (Apple Silicon)
+
+Versión para Mac con chip M1/M2, sin firmar. Se construye en GitHub Actions (`packaging/build_mac.sh` + `.spec` propio) y se publica un `.dmg` en la misma release que el `.exe`.
+
+### Instalación
+
+1. Descarga `DictadoLocal-<versión>-macos-arm64.dmg` de la release.
+2. Ábrelo y arrastra **DictadoLocal.app** a Aplicaciones.
+3. La app no está firmada con Developer ID. La primera vez: **clic derecho → Abrir** (no doble clic). Si el sistema aún se queja, en Terminal:
+   ```
+   xattr -dr com.apple.quarantine /Applications/DictadoLocal.app
+   ```
+
+### Permisos
+
+- **Micrófono**: la primera grabación pide permiso; acéptalo. Si lo denegas, el icono queda rojo con "Permiso del microfono denegado" y se abre el panel correspondiente.
+- **Accesibilidad** (para interceptar la tecla y enviar Cmd+V): al arrancar la app lo pide; concede "DictadoLocal" en Ajustes del Sistema → Privacidad y seguridad → Accesibilidad. Si falta, el icono lo indica y se abre el panel. Tras concederlo, reinicia la app.
+
+En la primera apertura sin pesos, la app descarga el modelo de Hugging Face (por defecto `mlx-community/whisper-large-v3-turbo`; si mlx falla, cae al `small` de faster-whisper en CPU int8). Después trabaja sin red.
+
+### Uso
+
+Mantén **Option derecha** (`alt_r` por defecto en Mac; `ctrl_r` sigue siendo el atajo en Windows) y suelta. El texto se pega en la app activa. La pastilla flotante de Windows no existe en Mac: el estado se ve en el icono de la barra de menús (gris cargando, verde listo, rojo grabando, naranja transcribiendo).
+
+Config y historial en `~/Library/Application Support/DictadoLocal`; los logs en `~/Library/Logs/DictadoLocal/dictado.log`. Para forzar CPU: `device: cpu` en el `config.yaml`.
 
 ## Pegado
 

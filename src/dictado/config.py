@@ -10,15 +10,25 @@ from typing import Any
 
 import yaml
 
+from dictado import DEFAULT_HOTKEY
+
 APP_DIR_NAME = "dictado-local"
 
 
+def _home_support_dir() -> Path:
+    return Path.home() / "Library" / "Application Support" / APP_DIR_NAME
+
+
 def app_data_dir() -> Path:
+    if sys.platform == "darwin":
+        return _home_support_dir()
     base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
     return Path(base) / APP_DIR_NAME
 
 
 def local_data_dir() -> Path:
+    if sys.platform == "darwin":
+        return _home_support_dir()
     base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
     return Path(base) / APP_DIR_NAME
 
@@ -32,12 +42,14 @@ def default_model_dir() -> Path:
 
 
 def default_log_path() -> Path:
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Logs" / APP_DIR_NAME / "dictado.log"
     return local_data_dir() / "logs" / "dictado.log"
 
 
 @dataclass
 class Config:
-    hotkey: str = "ctrl_r"
+    hotkey: str = DEFAULT_HOTKEY
     sample_rate: int = 16000
     min_record_ms: int = 300
     max_record_s: int = 120
@@ -165,8 +177,8 @@ def _validate(config: Config) -> None:
         raise ValueError("beam_size tiene que ser al menos 1")
     if config.language not in {"auto", "es", "en"}:
         raise ValueError("language tiene que ser auto, es o en")
-    if config.device not in {"auto", "cuda", "cpu"}:
-        raise ValueError("device tiene que ser auto, cuda o cpu")
+    if config.device not in {"auto", "cuda", "cpu", "mlx"}:
+        raise ValueError("device tiene que ser auto, cuda, cpu o mlx")
     if config.paste_restore_delay_ms < 0:
         raise ValueError("paste_restore_delay_ms no puede ser negativo")
     if config.pre_roll_ms < 0:

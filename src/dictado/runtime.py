@@ -1,4 +1,8 @@
-"""Process setup shared by the module entry and the frozen executable."""
+"""Process setup shared by the module entry and the frozen executable.
+
+Windows keeps the per-monitor DPI v2 setup. macOS has no DPI step and skips
+the frozen cwd change: a .app is not launched from a shell directory.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +16,8 @@ from pathlib import Path
 
 def prepare_runtime() -> None:
     multiprocessing.freeze_support()
+    if sys.platform != "win32":
+        return
     _enable_per_monitor_dpi()
     if not getattr(sys, "frozen", False):
         return
