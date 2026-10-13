@@ -17,13 +17,13 @@ from PIL import Image, ImageDraw
 from dictado.autostart import apply_autostart
 from dictado.config import Config, default_log_path, ensure_user_config, load_config
 from dictado.cues import play_async
-from dictado.download_model import download_models, model_ready
+from dictado.download_model import download_best_effort, model_ready
 from dictado.history import append_history, history_path, transcript_record
 from dictado.hotkey import HotkeyMatcher, listen
 from dictado.overlay import BAR_COUNT, Indicator
 from dictado.paste import foreground_window, paste_text
 from dictado.recorder import Microphone
-from dictado.transcriber import Transcriber
+from dictado.transcriber import Transcriber, cuda_available, models_for_device
 
 log = logging.getLogger("dictado")
 
@@ -149,15 +149,18 @@ class DictadoApp:
         )
 
     def _ensure_models(self) -> None:
-        names: list[str] = []
-        for name in (self.config.model, self.config.model_fallback):
-            if name and name not in names and not model_ready(self.config.model_path(name)):
-                names.append(name)
-        if not names:
+        wanted = models_for_device(self.config, cuda_available())
+        missing = [name for name in wanted if name and not model_ready(self.config.model_path(name))]
+        if not missing:
             return
         self._set_status("Descargando el modelo...", "#1971c2")
-        log.info("Faltan modelos %s. Se descargan una vez.", ", ".join(names))
-        download_models(names, self.config.resolved_model_dir())
+        log.info("Faltan modelos %s. Se descargan una vez.", ", ".join(missing))
+        download_best_effort(missing, self.config.resolved_model_dir())
+        ready = [name for name in wanted if model_ready(self.config.model_path(name))]
+        if not ready:
+            raise RuntimeError("No se pudo descargar ningun modelo (" + ", ".join(missing) + ")")
+        if len(ready) < len(wanted):
+            log.warning("Solo quedaron listos: %s", ", ".join(ready))
 
     def _set_status(self, text: str, color: str | None = None) -> None:
         self._status = text

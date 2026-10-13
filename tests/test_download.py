@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from dictado.download_model import download_models, model_ready
+from dictado.download_model import download_best_effort, download_models, model_ready
 
 
 def test_download_skips_a_model_that_is_already_present(tmp_path: Path) -> None:
@@ -35,3 +35,18 @@ def test_download_fetches_only_the_missing_model(tmp_path: Path) -> None:
     download_models(["small", "large-v3-turbo"], tmp_path, fetch=fetch)
     assert calls == ["large-v3-turbo"]
     assert model_ready(tmp_path / "large-v3-turbo")
+
+
+def test_download_best_effort_keeps_going_when_one_model_fails(tmp_path: Path) -> None:
+    def fetch(name, output_dir, local_files_only=False):
+        if name == "large-v3-turbo":
+            raise RuntimeError("network")
+        folder = Path(output_dir)
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "model.bin").write_bytes(b"y")
+        return output_dir
+
+    failed = download_best_effort(["large-v3-turbo", "small"], tmp_path, fetch=fetch)
+    assert failed == ["large-v3-turbo"]
+    assert model_ready(tmp_path / "small")
+    assert not model_ready(tmp_path / "large-v3-turbo")

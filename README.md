@@ -9,7 +9,7 @@ El diseño se apoya en el comportamiento observable de Wispr Flow (atajo manteni
 - Windows 10 o 11
 - Un micro
 - Para el modelo grande, una GPU NVIDIA. El `.exe` ya lleva las librerías CUDA 12 (cublas, cuDNN 9, runtime y nvrtc). No hace falta el toolkit de NVIDIA ni tener Python instalado.
-- Si CUDA no arranca, el programa sigue con el modelo `small` en CPU.
+- Si no hay GPU, o CUDA no arranca, el programa usa el modelo `small` en CPU con int8. En ese caso no descarga el modelo grande.
 
 Probado en una RTX 5070 Ti de 16 GB.
 
@@ -25,7 +25,15 @@ py -3.11 -m venv .venv
 .\packaging\build.ps1
 ```
 
-Luego, un doble clic en `install.cmd` (o `powershell -ExecutionPolicy Bypass -File .\install.ps1`). El script:
+El instalador para otro PC se genera con Inno Setup 6:
+
+```powershell
+.\packaging\installer.ps1
+```
+
+Eso deja `dist\DictadoLocal-Setup.exe`. El modelo no va dentro.
+
+Para instalar a mano la carpeta ya generada, un doble clic en `install.cmd` (o `powershell -ExecutionPolicy Bypass -File .\install.ps1`). El script:
 
 - copia la carpeta a `%LOCALAPPDATA%\Programs\dictado-local`
 - crea un acceso directo en el menú Inicio y otro en el escritorio, los dos se llaman **Dictado local**
@@ -38,7 +46,7 @@ Para abrirlo a mano: tecla Windows, escribe `Dictado local` y pulsa Enter. Tambi
 
 `%LOCALAPPDATA%\Programs\dictado-local\DictadoLocal.exe`
 
-La primera vez, si faltan los pesos, la app los descarga de Hugging Face a `%LOCALAPPDATA%\dictado-local\models` (`large-v3-turbo` y, si hace falta el plan B, `small`). El icono se pone azul mientras descarga y verde cuando está lista. Después de eso trabaja sin red.
+La primera vez, si faltan los pesos, la app los descarga de Hugging Face a `%LOCALAPPDATA%\dictado-local\models`. Con GPU baja `large-v3-turbo` y también `small`, por si CUDA falla. Sin GPU baja solo `small` y lo abre en CPU con int8. El icono se pone azul mientras descarga y verde cuando está lista. Después de eso trabaja sin red.
 
 ## Uso
 

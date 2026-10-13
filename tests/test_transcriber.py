@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 
 from dictado.config import Config
-from dictado.transcriber import Transcriber, choose_language
+from dictado.transcriber import Transcriber, choose_language, models_for_device
 
 
 class _Info:
@@ -71,6 +71,54 @@ def test_cuda_encode_failure_also_falls_back(tmp_path, monkeypatch) -> None:
     assert calls == ["cuda", "cpu"]
     assert engine.device == "cpu"
     assert engine.model_name == "small"
+
+
+def _cpu_model(root: Path) -> Config:
+    folder = root / "small"
+    folder.mkdir()
+    (folder / "model.bin").write_bytes(b"x")
+    return Config(model_dir=str(root), device="auto")
+
+
+def test_no_cuda_uses_small_cpu_int8_without_the_gpu_model(tmp_path, monkeypatch) -> None:
+    _Boom.calls = []
+    import ctranslate2
+    import faster_whisper
+
+    monkeypatch.setattr(ctranslate2, "get_cuda_device_count", lambda: 0)
+    monkeypatch.setattr(faster_whisper, "WhisperModel", _Boom)
+    engine = Transcriber(_cpu_model(tmp_path))
+    engine.load()
+    assert _Boom.calls == [("cpu", "int8", "small")]
+    assert engine.device == "cpu"
+    assert engine.compute_type == "int8"
+    assert engine.model_name == "small"
+    assert not (tmp_path / "large-v3-turbo").exists()
+
+
+def test_cuda_probe_error_uses_small_cpu_int8(tmp_path, monkeypatch) -> None:
+    _Boom.calls = []
+    import ctranslate2
+    import faster_whisper
+
+    def explode() -> int:
+        raise OSError("nvcuda.dll is not found")
+
+    monkeypatch.setattr(ctranslate2, "get_cuda_device_count", explode)
+    monkeypatch.setattr(faster_whisper, "WhisperModel", _Boom)
+    engine = Transcriber(_cpu_model(tmp_path))
+    engine.load()
+    assert _Boom.calls == [("cpu", "int8", "small")]
+    assert engine.device == "cpu"
+    assert engine.compute_type == "int8"
+
+
+def test_models_for_device_skips_the_gpu_model_without_cuda() -> None:
+    config = Config()
+    assert models_for_device(config, False) == ["small"]
+    assert models_for_device(config, True) == ["large-v3-turbo", "small"]
+    assert models_for_device(Config(device="cpu"), True) == ["small"]
+    assert models_for_device(Config(device="cuda"), False) == ["small"]
 
 
 def test_autodetect_stays_inside_spanish_and_english() -> None:
