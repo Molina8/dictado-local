@@ -9,7 +9,7 @@ El diseño se apoya en el comportamiento observable de Wispr Flow (atajo manteni
 - Windows 10 o 11
 - Python 3.11
 - Un micro
-- Para el modelo grande, una GPU NVIDIA. Las librerías CUDA 12 van en `requirements.txt` (`cublas`, runtime y nvrtc); no hace falta el toolkit de NVIDIA. Sin GPU el programa usa el modelo `small` en CPU.
+- Para el modelo grande, una GPU NVIDIA. Las librerías CUDA 12 van en `requirements.txt` (`cublas`, cudnn 9, runtime y nvrtc); no hace falta el toolkit de NVIDIA. Si CUDA no arranca, el programa sigue con el modelo `small` en CPU.
 
 Probado en una RTX 5070 Ti de 16 GB.
 
@@ -33,7 +33,7 @@ Aparece un icono en la bandeja. Mantén Control derecho para grabar y suelta par
 
 La primera vez copia `config.example.yaml` a `%APPDATA%\dictado-local\config.yaml` si quieres cambiar el atajo u otra cosa. También vale `python -m dictado --config ruta\config.yaml`.
 
-Atajos útiles en el YAML: `ctrl_r` (solo el derecho), `ctrl` (cualquiera de los dos), `ctrl+shift`, o una letra (`ctrl+a`). El atajo no se traga la tecla: el sistema también la recibe.
+Atajos útiles en el YAML: `ctrl_r` (solo el derecho), `ctrl` (cualquiera de los dos) o `ctrl+shift`. El atajo no se traga la tecla: el sistema también la recibe.
 
 ## Pegado
 

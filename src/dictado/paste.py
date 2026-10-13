@@ -20,8 +20,26 @@ KEYEVENTF_KEYUP = 0x0002
 VK_CONTROL = 0x11
 VK_V = 0x56
 VK_MENU = 0x12
+VK_LSHIFT = 0xA0
+VK_RSHIFT = 0xA1
+VK_LCONTROL = 0xA2
+VK_RCONTROL = 0xA3
+VK_LMENU = 0xA4
+VK_RMENU = 0xA5
+VK_LWIN = 0x5B
+VK_RWIN = 0x5C
 SW_RESTORE = 9
 KEYEVENTF_SCANCODE = 0x0008
+MODIFIER_KEYS = (
+    VK_LSHIFT,
+    VK_RSHIFT,
+    VK_LCONTROL,
+    VK_RCONTROL,
+    VK_LMENU,
+    VK_RMENU,
+    VK_LWIN,
+    VK_RWIN,
+)
 
 user32.GetForegroundWindow.restype = wintypes.HWND
 user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
@@ -82,6 +100,8 @@ class INPUT(ctypes.Structure):
 
 user32.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int]
 user32.SendInput.restype = wintypes.UINT
+user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
+user32.GetAsyncKeyState.restype = wintypes.SHORT
 
 
 def foreground_window() -> int:
@@ -139,7 +159,20 @@ def _activate(hwnd: int) -> None:
             user32.AttachThreadInput(this_thread, other, False)
 
 
+def release_modifiers() -> None:
+    """Drop Shift, Ctrl, Alt and Win so the paste is a plain Ctrl+V."""
+    held = [vk for vk in MODIFIER_KEYS if user32.GetAsyncKeyState(vk) & 0x8000]
+    if not held:
+        return
+    events = (INPUT * len(held))()
+    for index, vk in enumerate(held):
+        events[index].type = INPUT_KEYBOARD
+        events[index].ki = KEYBDINPUT(vk, 0, KEYEVENTF_KEYUP, 0, 0)
+    _send_inputs(events)
+
+
 def send_ctrl_v() -> None:
+    release_modifiers()
     events = (INPUT * 4)()
     sequence = (
         (VK_CONTROL, 0),

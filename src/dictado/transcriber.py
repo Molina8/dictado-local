@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +10,10 @@ from pathlib import Path
 import numpy as np
 
 from dictado.config import Config
+
+log = logging.getLogger(__name__)
+
+ALLOWED_LANGUAGES = frozenset({"es", "en"})
 
 
 def force_offline() -> None:
@@ -59,28 +64,29 @@ class Transcriber:
         import ctranslate2
         from faster_whisper import WhisperModel
 
-        cuda = ctranslate2.get_cuda_device_count() > 0
+        cuda_ok = ctranslate2.get_cuda_device_count() > 0
         requested = self.config.device
-        use_cuda = cuda and requested in {"auto", "cuda"}
-        if requested == "cuda" and not cuda:
-            use_cuda = False
-        if use_cuda:
-            self.model_name = self.config.model
-            self.device = "cuda"
-            self.compute_type = "float16" if self.config.compute_type == "auto" else self.config.compute_type
+        if requested in {"auto", "cuda"} and cuda_ok:
+            compute = "float16" if self.config.compute_type == "auto" else self.config.compute_type
+            try:
+                self._open_model(WhisperModel, self.config.model, "cuda", compute)
+                self._touch()
+                return
+            except Exception:
+                log.exception(
+                    "No se pudo cargar %s en CUDA. Sigo con %s en CPU int8.",
+                    self.config.model,
+                    self.config.model_fallback,
+                )
+                self.model = None
+        elif requested == "cuda":
+            log.warning("No hay dispositivo CUDA. Sigo con %s en CPU int8.", self.config.model_fallback)
+
+        if requested == "cpu" and self.config.compute_type != "auto":
+            compute = self.config.compute_type
         else:
-            self.model_name = self.config.model_fallback if requested == "auto" or not cuda else self.config.model
-            if requested == "cpu":
-                self.model_name = self.config.model_fallback
-            self.device = "cpu"
-            self.compute_type = "int8" if self.config.compute_type == "auto" else self.config.compute_type
-        path = self._require_model(self.model_name)
-        self.model = WhisperModel(
-            str(path),
-            device=self.device,
-            compute_type=self.compute_type,
-            local_files_only=True,
-        )
+            compute = "int8"
+        self._open_model(WhisperModel, self.config.model_fallback, "cpu", compute)
 
     def warmup(self) -> None:
         silence = np.zeros(self.config.sample_rate // 2, dtype=np.float32)
@@ -89,7 +95,7 @@ class Transcriber:
     def transcribe(self, audio: np.ndarray) -> Transcript:
         if self.model is None:
             raise RuntimeError("El modelo no esta cargado")
-        language = None if self.config.language == "auto" else self.config.language
+        language = self._language_for(audio)
         segments, info = self.model.transcribe(
             audio,
             language=language,
@@ -102,7 +108,7 @@ class Transcriber:
         text = " ".join(segment.text.strip() for segment in segments if segment.text).strip()
         if self.config.append_space and text:
             text += " "
-        detected = getattr(info, "language", None) or ""
+        detected = getattr(info, "language", None) or language or ""
         duration = float(getattr(info, "duration", 0.0) or (len(audio) / self.config.sample_rate))
         return Transcript(
             text=text,
@@ -113,6 +119,41 @@ class Transcriber:
             compute_type=self.compute_type,
         )
 
+    def _language_for(self, audio: np.ndarray) -> str | None:
+        if self.config.language != "auto":
+            return self.config.language
+        if audio.size == 0:
+            return "es"
+        detected, _probability, ranked = self.model.detect_language(audio)
+        return choose_language(detected, ranked)
+
+    def _open_model(self, factory, name: str, device: str, compute_type: str) -> None:
+        path = self._require_model(name)
+        self.model_name = name
+        self.device = device
+        self.compute_type = compute_type
+        self.model = factory(
+            str(path),
+            device=device,
+            compute_type=compute_type,
+            local_files_only=True,
+        )
+
+    def _touch(self) -> None:
+        """Run one short encode so a missing CUDA DLL fails inside load()."""
+        silence = np.zeros(max(1, self.config.sample_rate // 2), dtype=np.float32)
+        segments, _info = self.model.transcribe(
+            silence,
+            language="es",
+            beam_size=1,
+            vad_filter=False,
+            condition_on_previous_text=False,
+            without_timestamps=True,
+            temperature=0.0,
+        )
+        for _segment in segments:
+            pass
+
     def _require_model(self, name: str) -> Path:
         path = self.config.model_path(name)
         if (path / "model.bin").is_file():
@@ -121,3 +162,13 @@ class Transcriber:
             f"No esta el modelo '{name}' en {path}. "
             "Descargalo una vez con: python -m dictado.download_model"
         )
+
+
+def choose_language(detected: str, ranked: list[tuple[str, float]]) -> str:
+    """Keep autodetection inside Spanish and English."""
+    if detected in ALLOWED_LANGUAGES:
+        return detected
+    scores = {code: score for code, score in ranked if code in ALLOWED_LANGUAGES}
+    if not scores:
+        return "es"
+    return max(scores, key=scores.get)

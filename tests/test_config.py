@@ -12,6 +12,7 @@ def test_missing_file_uses_defaults(tmp_path: Path) -> None:
     assert config.model_fallback == "small"
     assert config.language == "auto"
     assert config.device == "auto"
+    assert config.paste_restore_delay_ms == 450
 
 
 def test_unknown_key_is_rejected(tmp_path: Path) -> None:

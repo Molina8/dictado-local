@@ -18,6 +18,6 @@ vad_filter: true
 language: auto
 model_dir: null
 
-paste_restore_delay_ms: 250
+paste_restore_delay_ms: 450
 append_space: false
 indicator: true

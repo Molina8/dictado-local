@@ -2,7 +2,23 @@ import ctypes
 
 import numpy as np
 
-from dictado.clipboard_win import get_text, restore, set_text, snapshot
+from dictado.clipboard_win import (
+    CF_BITMAP,
+    CF_DIB,
+    CF_DIBV5,
+    CF_ENHMETAFILE,
+    CF_HDROP,
+    CF_METAFILEPICT,
+    CF_PALETTE,
+    CF_UNICODETEXT,
+    MAX_CLIPBOARD_FORMAT_BYTES,
+    accept_clipboard_format,
+    allowed_hglobal_formats,
+    get_text,
+    restore,
+    set_text,
+    snapshot,
+)
 from dictado.paste import INPUT
 from dictado.recorder import Microphone
 
@@ -14,6 +30,36 @@ def test_text_roundtrip_restores_the_previous_clipboard() -> None:
         assert get_text() == "dictado-prueba-áéí"
         set_text("otro")
         assert get_text() == "otro"
+    finally:
+        restore(original)
+
+
+def test_only_hglobal_whitelist_is_captured() -> None:
+    allowed = allowed_hglobal_formats()
+    for fmt in (CF_BITMAP, CF_METAFILEPICT, CF_PALETTE, CF_ENHMETAFILE):
+        assert fmt not in allowed
+        assert accept_clipboard_format(fmt, 64, allowed) is False
+    for fmt in (CF_UNICODETEXT, CF_DIB, CF_DIBV5, CF_HDROP):
+        assert fmt in allowed
+        assert accept_clipboard_format(fmt, 64, allowed) is True
+    assert accept_clipboard_format(CF_DIB, MAX_CLIPBOARD_FORMAT_BYTES, allowed) is True
+    assert accept_clipboard_format(CF_DIB, MAX_CLIPBOARD_FORMAT_BYTES + 1, allowed) is False
+    html = int(ctypes.windll.user32.RegisterClipboardFormatW("HTML Format"))
+    rtf = int(ctypes.windll.user32.RegisterClipboardFormatW("Rich Text Format"))
+    assert html in allowed
+    assert rtf in allowed
+
+
+def test_restore_skips_bitmap_handles() -> None:
+    original = snapshot()
+    try:
+        saved = {CF_UNICODETEXT: "sigue".encode("utf-16-le") + b"\x00\x00", CF_BITMAP: b"no-es-hglobal"}
+        restore(saved)
+        assert get_text() == "sigue"
+        assert ctypes.windll.user32.IsClipboardFormatAvailable(CF_BITMAP) == 0
+        found = snapshot()
+        assert CF_BITMAP not in found
+        assert set(found) <= allowed_hglobal_formats()
     finally:
         restore(original)
 

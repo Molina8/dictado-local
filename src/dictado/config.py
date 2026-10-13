@@ -51,7 +51,7 @@ class Config:
     vad_filter: bool = True
     language: str = "auto"
     model_dir: str | None = None
-    paste_restore_delay_ms: int = 250
+    paste_restore_delay_ms: int = 450
     append_space: bool = False
     indicator: bool = True
 
