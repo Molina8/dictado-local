@@ -49,7 +49,7 @@ jobs:
           chmod +x packaging/build_mac.sh
           packaging/build_mac.sh
       - name: Smoke test of the generated bundle
-        run: python scripts/smoke_mac.py --bundle dist/DictadoLocal.app/Contents/MacOS/DictadoLocal
+        run: .venv-mac/bin/python scripts/smoke_mac.py --bundle dist/DictadoLocal.app/Contents/MacOS/DictadoLocal
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

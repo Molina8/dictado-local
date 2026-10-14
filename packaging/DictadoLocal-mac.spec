@@ -22,12 +22,25 @@ PACKAGES = [
     "pynput",
     "mlx_whisper",
     "mlx",
+    # pystray's darwin backend imports these at import time. collect_all
+    # pulls the PyObjC binaries; a bare hiddenimport leaves them out.
+    "objc",
+    "CoreFoundation",
+    "Foundation",
+    "AppKit",
+    "Cocoa",
+    "Quartz",
+    "ApplicationServices",
 ]
 
 datas = [(str(ROOT / "config.example.yaml"), ".")]
 binaries = []
 hiddenimports = [
     "yaml",
+    # get_platform() loads this with importlib, so PyInstaller never sees it.
+    "dictado.platform.macos",
+    "dictado.permissions",
+    "pystray._darwin",
     "pystray._dummy",
     "pynput.keyboard._darwin",
     "pynput.mouse._darwin",
