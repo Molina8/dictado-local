@@ -22,14 +22,11 @@ fi
 ./.venv-mac/bin/pip install --disable-pip-version-check --upgrade pip >/dev/null
 ./.venv-mac/bin/pip install --disable-pip-version-check -r requirements.txt "pyinstaller==6.16.0"
 
-# .icns from the existing .ico (sips is part of macOS).
+# .icns from the existing .ico. macOS sips cannot convert .ico; PIL (already
+# in the venv) renders the iconset and iconutil packs the .icns.
 if [ ! -f assets/dictado.icns ]; then
-    mkdir -p assets/icon.iconset
-    for size in 16 32 64 128 256 512; do
-        double=$((size * 2))
-        sips -z "$size" "$size" assets/dictado.ico --out "assets/icon.iconset/icon_${size}x${size}.png" >/dev/null
-        sips -z "$double" "$double" assets/dictado.ico --out "assets/icon.iconset/icon_${size}x${size}@2x.png" >/dev/null
-    done
+    "${PYTHON_BIN}" packaging/_version.py >/dev/null  # sanity: repo layout ok
+    ./.venv-mac/bin/python packaging/_iconset.py "$ROOT"
     iconutil -c icns assets/icon.iconset -o assets/dictado.icns
     rm -rf assets/icon.iconset
 fi
