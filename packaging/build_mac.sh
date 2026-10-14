@@ -6,7 +6,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 PYTHON_BIN="${PYTHON_BIN:-python3.11}"
-VERSION="$(python3 -c "import re; print(re.search(r'__version__ = \"(.*)\"', src/dictado/__init__.py).group(1))")"
+VERSION="$(python3 packaging/_version.py)"
+if [ -z "$VERSION" ]; then
+    echo "No pude leer la version de src/dictado/__init__.py" >&2
+    exit 1
+fi
 DMG="dist/DictadoLocal-${VERSION}-macos-arm64.dmg"
 
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
