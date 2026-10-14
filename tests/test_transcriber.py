@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -36,6 +37,9 @@ def test_cuda_load_failure_falls_back_to_small_cpu_int8(tmp_path, monkeypatch, c
     import ctranslate2
     import faster_whisper
 
+    # The CUDA flow is Windows/Linux-specific; pin the platform so this also
+    # runs on macos-14 (darwin answers MLX/CPU, never CUDA).
+    monkeypatch.setattr(sys, "platform", "win32", raising=False)
     monkeypatch.setattr(ctranslate2, "get_cuda_device_count", lambda: 1)
     monkeypatch.setattr(faster_whisper, "WhisperModel", _Boom)
     engine = Transcriber(_models(tmp_path))
@@ -46,6 +50,27 @@ def test_cuda_load_failure_falls_back_to_small_cpu_int8(tmp_path, monkeypatch, c
     assert engine.compute_type == "int8"
     assert engine.model_name == "small"
     assert "CPU int8" in caplog.text
+
+
+def test_darwin_auto_device_never_probes_cuda(tmp_path, monkeypatch) -> None:
+    """Darwin equivalent of the two CUDA-fallback tests."""
+    import faster_whisper
+
+    import ctranslate2  # imported but never probed on darwin
+
+    def unexpected_probe() -> int:
+        raise AssertionError("darwin no debe pedir dispositivos CUDA")
+
+    _Boom.calls = []
+    monkeypatch.setattr(sys, "platform", "darwin", raising=False)
+    monkeypatch.setattr(ctranslate2, "get_cuda_device_count", unexpected_probe)
+    monkeypatch.setattr(faster_whisper, "WhisperModel", _Boom)
+    engine = Transcriber(_models(tmp_path))
+    engine.load()
+    assert engine.device == "cpu"
+    assert engine.compute_type == "int8"
+    assert engine.model_name == "small"
+    assert _Boom.calls == [("cpu", "int8", "small")]
 
 
 def test_cuda_encode_failure_also_falls_back(tmp_path, monkeypatch) -> None:
@@ -64,6 +89,7 @@ def test_cuda_encode_failure_also_falls_back(tmp_path, monkeypatch) -> None:
     import ctranslate2
     import faster_whisper
 
+    monkeypatch.setattr(sys, "platform", "win32", raising=False)
     monkeypatch.setattr(ctranslate2, "get_cuda_device_count", lambda: 1)
     monkeypatch.setattr(faster_whisper, "WhisperModel", _EncodeBoom)
     engine = Transcriber(_models(tmp_path))
@@ -114,7 +140,15 @@ def test_cuda_probe_error_uses_small_cpu_int8(tmp_path, monkeypatch) -> None:
 
 
 def test_models_for_device_skips_the_gpu_model_without_cuda() -> None:
+    # The non-darwin contract runs on any CI OS (win32 pinned); the darwin
+    # variant has its own test in test_transcriber_mlx.py.
     config = Config()
+    if sys.platform == "darwin":
+        from dictado.backends import MLX_FALLBACK_ID, MLX_MODEL_ID
+
+        assert models_for_device(config, False) == [MLX_MODEL_ID, MLX_FALLBACK_ID]
+        assert models_for_device(Config(device="cpu"), False) == ["small"]
+        return
     assert models_for_device(config, False) == ["small"]
     assert models_for_device(config, True) == ["large-v3-turbo", "small"]
     assert models_for_device(Config(device="cpu"), True) == ["small"]
