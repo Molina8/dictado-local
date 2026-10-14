@@ -3,10 +3,12 @@ name: ci
 on:
   push:
     branches: [main, "agent/**"]
+    tags: ["v*"]
   pull_request:
     branches: [main]
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,7 +33,8 @@ jobs:
         run: python -m pytest -q
 
   build-mac:
-    if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v') || startsWith(github.head_ref, 'agent/macos')
+    # Runs on every run (push/PR/dispatch/release); only the release upload
+    # step is release-gated below.
     needs: test
     runs-on: macos-14
     permissions:
@@ -41,10 +44,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Build .app + .dmg
+      - name: Build the .app and the .dmg
         run: |
           chmod +x packaging/build_mac.sh
           packaging/build_mac.sh
+      - name: Smoke test of the generated bundle
+        run: python scripts/smoke_mac.py --bundle dist/DictadoLocal.app/Contents/MacOS/DictadoLocal
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

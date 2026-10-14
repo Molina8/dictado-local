@@ -14,21 +14,25 @@ from dictado import DEFAULT_HOTKEY
 
 APP_DIR_NAME = "dictado-local"
 
+#: The issue asks for the macOS folders to carry the product name; the
+#: case matches the bundle (DictadoLocal.app).
+MAC_APP_DIR_NAME = "DictadoLocal"
 
-def _home_support_dir() -> Path:
-    return Path.home() / "Library" / "Application Support" / APP_DIR_NAME
+
+def _mac_app_data_dir() -> Path:
+    return Path.home() / "Library" / "Application Support" / MAC_APP_DIR_NAME
 
 
 def app_data_dir() -> Path:
     if sys.platform == "darwin":
-        return _home_support_dir()
+        return _mac_app_data_dir()
     base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
     return Path(base) / APP_DIR_NAME
 
 
 def local_data_dir() -> Path:
     if sys.platform == "darwin":
-        return _home_support_dir()
+        return _mac_app_data_dir()
     base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
     return Path(base) / APP_DIR_NAME
 
@@ -43,7 +47,7 @@ def default_model_dir() -> Path:
 
 def default_log_path() -> Path:
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Logs" / APP_DIR_NAME / "dictado.log"
+        return Path.home() / "Library" / "Logs" / MAC_APP_DIR_NAME / "dictado.log"
     return local_data_dir() / "logs" / "dictado.log"
 
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib.util
 import platform
 import sys
+from pathlib import Path
 from typing import Callable
 
 from dictado.config import Config
@@ -22,6 +23,21 @@ MLX_FALLBACK_ID = "mlx-community/whisper-small-mlx"
 BACKEND_MLX = "mlx"
 BACKEND_CUDA = "faster-whisper-cuda"
 BACKEND_CPU = "faster-whisper-cpu"
+
+
+def mlx_repo_for(name: str) -> str:
+    """Map a faster-whisper model name onto its mlx-community repo.
+
+    Local folders and explicit Hugging Face ids pass through untouched.
+    """
+    if name.startswith(("mlx-community/", "local/")) or Path(name).is_dir() or Path(name).is_absolute():
+        return name
+    mapping = {
+        "large-v3-turbo": MLX_MODEL_ID,
+        "turbo": MLX_MODEL_ID,
+        "small": MLX_FALLBACK_ID,
+    }
+    return mapping.get(name, name)
 
 
 def mlx_importable(

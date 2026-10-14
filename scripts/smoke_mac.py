@@ -64,9 +64,13 @@ def main() -> int:
     print(f"backend={backend}")
 
     wav = make_wav(Path("/tmp/dictado-smoke.wav"))
-    audio = read_wav(wav)
 
     import mlx_whisper  # the wheel only exists on darwin arm64
+
+    if args.bundle:
+        # Bundle first: a broken pack cannot be saved by a good transcription.
+        subprocess.run([args.bundle, "--selftest"], check=True, timeout=120)
+        print("bundle selftest ok")
 
     result = mlx_whisper.transcribe(str(wav), path_or_hf_repo=args.model, language="es")
     text = str(result.get("text", "")).lower()
@@ -75,10 +79,6 @@ def main() -> int:
     if "prueba" not in text:
         print("El texto esperado no aparece en la transcripcion", file=sys.stderr)
         return 1
-
-    if args.bundle:
-        subprocess.run([args.bundle, "--selftest"], check=True, timeout=120)
-        print("bundle selftest ok")
     print("SMOKE OK")
     return 0
 

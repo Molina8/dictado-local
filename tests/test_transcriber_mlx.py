@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from dictado.backends import BACKEND_MLX
+from dictado.backends import BACKEND_MLX, MLX_FALLBACK_ID, MLX_MODEL_ID
 from dictado.config import Config
 from dictado.transcriber import Transcript, Transcriber
 
@@ -66,12 +66,63 @@ def test_mlx_backend_selected_and_transcribed(mlx_env) -> None:
     assert select_backend(mlx_env) == BACKEND_MLX
     engine.load()
     assert engine.device == "mlx"
-    assert engine.model_name == "large-v3-turbo"
+    # The friendly faster-whisper name is mapped to the mlx-community repo.
+    assert engine.model_name == MLX_MODEL_ID
     transcript = engine.transcribe(np.zeros(1600, dtype=np.float32))
     assert isinstance(transcript, Transcript)
     assert "prueba" in transcript.text
     assert transcript.device == "mlx"
+    # mlx_whisper.transcribe got the mlx-community repo, not "large-v3-turbo"
+    assert _FakeMlxWhisper.calls[-1]["path_or_hf_repo"] == MLX_MODEL_ID
     _FakeMlxWhisper.calls.pop()
+
+
+def test_mlx_repo_reaches_mlx_whisper_transcribe(mlx_env) -> None:
+    """point 1 of the review: the repo id, not the faster-whisper name."""
+    engine = _engine(mlx_env)
+    engine.load()
+    _FakeMlxWhisper.calls = []
+    # real speech (non-empty audio + language auto) -> language None
+    engine.transcribe(np.zeros(1600, dtype=np.float32))
+    call = _FakeMlxWhisper.calls[-1]
+    assert call["path_or_hf_repo"] == MLX_MODEL_ID
+    assert call["language"] is None  # mlx-whisper itself detects it
+    _FakeMlxWhisper.calls.pop()
+
+
+def test_mlx_fallback_repo_used_when_small_requested(tmp_path, monkeypatch) -> None:
+    """device: mlx con small -> mlx-community/whisper-small-mlx."""
+    import platform
+
+    _FakeMlxWhisper.calls = []
+    fake = types.ModuleType("mlx_whisper")
+    fake.__spec__ = importlib.util.spec_from_file_location("mlx_whisper", __file__)
+    fake.transcribe = lambda audio, **kwargs: _FakeMlxWhisper.transcribe(audio, **kwargs)
+    monkeypatch.setattr(sys, "platform", "darwin", raising=False)
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+    monkeypatch.setitem(sys.modules, "mlx_whisper", fake)
+
+    config = Config(model_dir=str(tmp_path), device="mlx", model="small")
+    engine = _engine(config)
+    engine.load()
+    assert engine.model_name == MLX_FALLBACK_ID
+    _FakeMlxWhisper.calls = []
+    engine.transcribe(np.zeros(1600, dtype=np.float32))
+    assert _FakeMlxWhisper.calls[-1]["path_or_hf_repo"] == MLX_FALLBACK_ID
+    _FakeMlxWhisper.calls.pop()
+
+
+def test_models_for_device_on_darwin_uses_mlx_repo_ids(monkeypatch) -> None:
+    import platform
+
+    monkeypatch.setattr(sys, "platform", "darwin", raising=False)
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+    from dictado.transcriber import models_for_device
+
+    config = Config()
+    assert models_for_device(config, cuda_ok=False) == [MLX_MODEL_ID, MLX_FALLBACK_ID]
+    assert models_for_device(Config(device="cpu"), cuda_ok=False) == ["small"]
+    assert models_for_device(Config(device="mlx"), cuda_ok=False) == [MLX_MODEL_ID, MLX_FALLBACK_ID]
 
 
 def test_mlx_load_failure_falls_back_to_cpu_int8(mlx_env, monkeypatch, tmp_path, caplog) -> None:

@@ -104,6 +104,8 @@ Mantén **Option derecha** (`alt_r` por defecto en Mac; `ctrl_r` sigue siendo el
 
 Config y historial en `~/Library/Application Support/DictadoLocal`; los logs en `~/Library/Logs/DictadoLocal/dictado.log`. Para forzar CPU: `device: cpu` en el `config.yaml`.
 
+Al arrancar la app ya instalada (`.app` en Aplicaciones) se crea un LaunchAgent (`~/Library/LaunchAgents/com.molina8.dictadolocal.plist`) cuando `start_with_windows` está activo; bórralo para quitar el arranque automático.
+
 ## Pegado
 
 Al soltar, el programa guarda el portapapeles, copia el texto, envía Ctrl+V a la ventana que estaba delante al empezar el gesto y restaura lo que había. La pastilla no roba el foco.

@@ -10,7 +10,12 @@ from pathlib import Path
 
 import numpy as np
 
-from dictado.backends import BACKEND_MLX, select_backend
+from dictado.backends import (
+    BACKEND_MLX,
+    MLX_FALLBACK_ID,
+    mlx_repo_for,
+    select_backend,
+)
 from dictado.config import Config
 
 log = logging.getLogger(__name__)
@@ -102,9 +107,15 @@ def models_for_device(config: Config, cuda_ok: bool) -> list[str]:
     if sys.platform == "darwin":
         wanted: list[str] = []
         if config.device in {"auto", "mlx"} and config.model:
-            wanted.append(config.model)
-        if config.model_fallback and config.model_fallback not in wanted:
-            wanted.append(config.model_fallback)
+            wanted.append(mlx_repo_for(config.model))
+        if config.model_fallback:
+            fallback = mlx_repo_for(config.model_fallback)
+            if fallback not in wanted:
+                wanted.append(fallback)
+        if config.device == "cpu" and MLX_FALLBACK_ID in wanted:
+            # CPU on darwin never runs mlx; fetch only the faster-whisper
+            # fallback (its folder name stays the friendly name).
+            wanted = [config.model_fallback]
         if not wanted and config.model:
             wanted.append(config.model)
         return wanted
@@ -224,11 +235,11 @@ class Transcriber:
     def _load_mlx(self) -> None:
         """Load mlx-community weights; fall back to faster-whisper on CPU.
 
-        `path_or_hf_repo` points straight at a local folder when the weights
-        were downloaded once, otherwise mlx-whisper fetches the Hub repo and
-        honours the HF offline env vars that load() already set.
+        The config model names are faster-whisper ones; on the mlx backend
+        they map to their mlx-community repos via `mlx_repo_for`. A local
+        folder or an explicit "user/name" id passes through untouched.
         """
-        requested = self.config.model
+        requested = mlx_repo_for(self.config.model)
         try:
             self._open_mlx(requested)
         except Exception:
@@ -250,6 +261,8 @@ class Transcriber:
 
     def _open_mlx(self, name: str) -> None:
         path = self.config.model_path(name)
+        # model_path() points at the models folder for repo ids too; only a
+        # real folder on disk may be handed to mlx-whisper directly.
         source = str(path) if path.is_dir() else name
         self.model = _MlxModel(self)
         self.model.repo = source
