@@ -35,9 +35,23 @@ def make_wav(path: Path) -> Path:
     return path
 
 
-def read_wav(path: Path) -> bytes:
+def read_audio(path: Path):
+    """16 kHz mono PCM as float32 in [-1, 1].
+
+    mlx-whisper shells out to ffmpeg when given a path. The runner has no
+    ffmpeg; afconvert already wrote the samples, so we hand them over directly.
+    """
+    import numpy as np
+
     with wave.open(str(path), "rb") as handle:
-        return handle.readframes(handle.getnframes())
+        if handle.getnchannels() != 1 or handle.getsampwidth() != 2 or handle.getframerate() != 16000:
+            raise RuntimeError(
+                f"wav inesperado: {handle.getnchannels()}ch "
+                f"{handle.getsampwidth() * 8}bit {handle.getframerate()}Hz"
+            )
+        frames = handle.readframes(handle.getnframes())
+    samples = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
+    return np.ascontiguousarray(samples)
 
 
 def main() -> int:
@@ -72,7 +86,7 @@ def main() -> int:
         subprocess.run([args.bundle, "--selftest"], check=True, timeout=120)
         print("bundle selftest ok")
 
-    result = mlx_whisper.transcribe(str(wav), path_or_hf_repo=args.model, language="es")
+    result = mlx_whisper.transcribe(read_audio(wav), path_or_hf_repo=args.model, language="es")
     text = str(result.get("text", "")).lower()
     print(f"text={text}")
     wav.unlink(missing_ok=True)
