@@ -24,6 +24,7 @@ def test_missing_file_uses_defaults(tmp_path: Path) -> None:
     assert config.sound is True
     assert config.history is True
     assert config.start_with_windows is True
+    assert config.check_updates is True
 
 
 def test_unknown_key_is_rejected(tmp_path: Path) -> None:
@@ -57,6 +58,12 @@ def test_frozen_app_reads_appdata_and_ignores_the_working_directory(tmp_path: Pa
     config = load_config()
     assert config.hotkey == "ctrl"
     assert config.start_with_windows is False
+
+
+def test_check_updates_can_be_turned_off(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text("check_updates: false\n", encoding="utf-8")
+    assert load_config(path).check_updates is False
 
 
 def test_indicator_layout_is_optional(tmp_path: Path) -> None:

@@ -13,5 +13,6 @@ pystray==0.19.5
 pillow==12.3.0
 pynput==1.8.2
 pyyaml==6.0.3
+packaging==26.3
 numpy==2.4.6
 pytest==9.1.1

@@ -1,6 +1,6 @@
 # Dictado local
 
-Dictado push-to-talk para Windows y macOS (Apple Silicon). Mantienes una tecla, sueltas, y el texto se pega en la ventana que tenías activa. La transcripción corre en tu máquina con faster-whisper (Windows, CUDA o CPU) o mlx-whisper (Mac M1/M2). Con el modelo ya en disco no llama a internet.
+Dictado push-to-talk para Windows y macOS (Apple Silicon). Mantienes una tecla, sueltas, y el texto se pega en la ventana que tenías activa. La transcripción corre en tu máquina con faster-whisper (Windows, CUDA o CPU) o mlx-whisper (Mac M1/M2). Con el modelo ya en disco no llama a internet, salvo la comprobación de actualizaciones si `check_updates` está activo.
 
 El diseño se apoya en el comportamiento observable de Wispr Flow (atajo mantenido, indicador, pegado al soltar). No incluye código ni assets de ese programa. El detalle está en [docs/rea_analisis_wispr.md](docs/rea_analisis_wispr.md).
 
@@ -52,7 +52,7 @@ La primera vez, si faltan los pesos, la app los descarga de Hugging Face a `%LOC
 
 Mantén Control derecho para grabar y suelta para transcribir y pegar. El idioma se detecta solo entre español e inglés. Mientras grabas sale una pastilla oscura abajo en el centro, con unas barras que suben con la voz. Al soltar pasa a unos puntos y, si el texto se pega, muestra un visto un momento. Si algo falla, un aviso breve. La pastilla no sale en la barra de tareas, no roba el foco y los clics la atraviesan. Suena un pitido corto al empezar y al soltar.
 
-En el icono de la bandeja: estado, última frase, historial, configuración y salir.
+En el icono de la bandeja: estado, última frase, historial, configuración, buscar actualizaciones y salir. Si hay una versión nueva, el menú muestra «Hay una versión nueva X.Y.Z» y al pulsarlo se abre la descarga en el navegador. No instala nada.
 
 El historial es `%LOCALAPPDATA%\dictado-local\history.jsonl` (una línea JSON por transcripción, se queda con las 2000 más nuevas).
 
@@ -74,6 +74,7 @@ Atajos útiles en el YAML: `ctrl_r` (solo el derecho), `ctrl` (cualquiera de los
 | `sound` | Pitidos al grabar y al soltar |
 | `history` | Guardar transcripciones |
 | `start_with_windows` | Al abrir el `.exe`, crea o quita la clave Run. En el modo Python no toca el registro |
+| `check_updates` | Al arrancar y cada 24 h, avisa si GitHub tiene una versión mayor. Por defecto `true`. No instala nada |
 | `model_dir` | Carpeta de los modelos. Vacío usa `%LOCALAPPDATA%\dictado-local\models` |
 
 Para no arrancar con Windows, pon `start_with_windows: false`, cierra la app y ábrela otra vez.

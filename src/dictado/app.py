@@ -21,6 +21,7 @@ from dictado.hotkey import HotkeyMatcher, listen
 from dictado.permissions import PermissionPrompt, microphone_permission_denied
 from dictado.recorder import Microphone
 from dictado.transcriber import Transcriber, cuda_available, models_for_device
+from dictado.updates import AvailableUpdate, UpdateWatcher, update_message
 
 log = logging.getLogger("dictado")
 
@@ -68,6 +69,8 @@ class DictadoApp:
         self._limit: threading.Timer | None = None
         self._listener = None
         self._icon: pystray.Icon | None = None
+        self._available: AvailableUpdate | None = None
+        self._updates = UpdateWatcher(self._on_available_update, enabled=self.config.check_updates)
         self._worker = threading.Thread(target=self._work, name="dictado-worker", daemon=True)
 
     def run(self) -> None:
@@ -99,10 +102,16 @@ class DictadoApp:
                 pystray.MenuItem(lambda _: self._last_line(), lambda: None, enabled=False),
                 pystray.MenuItem("Abrir historial", self._open_history),
                 pystray.MenuItem("Abrir configuracion", self._open_config),
+                pystray.MenuItem(
+                    lambda _: self._update_menu_label(),
+                    self._open_update,
+                    visible=lambda _: self._available is not None,
+                ),
+                pystray.MenuItem("Buscar actualizaciones", self._search_updates),
                 pystray.MenuItem("Salir", self._quit),
             ),
         )
-        self.platform.start_icon(self._icon)
+        self.platform.start_icon(self._icon, self._on_icon_ready)
 
     def _configure_logging(self) -> None:
         path = default_log_path()
@@ -209,6 +218,61 @@ class DictadoApp:
 
     def _open_config(self, _icon: pystray.Icon, _item: pystray.MenuItem) -> None:
         self.platform.open_path(ensure_user_config())
+
+    def _on_icon_ready(self, icon: pystray.Icon) -> None:
+        # A custom setup replaces the one pystray uses to show the icon.
+        icon.visible = True
+        self._updates.start()
+
+    def _update_menu_label(self) -> str:
+        update = self._available
+        if update is None:
+            return "Hay una versión nueva"
+        return update_message(update.version)
+
+    def _on_available_update(self, update: AvailableUpdate) -> None:
+        self._available = update
+        log.info("Version nueva %s: %s", update.version, update.url)
+        self._notify(update_message(update.version))
+        # Windows and macOS snapshot the menu. Rebuild it so the new item shows.
+        icon = self._icon
+        if icon is None:
+            return
+        try:
+            self.platform.refresh_menu(icon)
+        except Exception:
+            log.info("No se pudo refrescar el menu de actualizaciones")
+
+    def _search_updates(self, _icon: pystray.Icon, _item: pystray.MenuItem) -> None:
+        threading.Thread(
+            target=self._manual_update_check,
+            name="dictado-update-now",
+            daemon=True,
+        ).start()
+
+    def _manual_update_check(self) -> None:
+        result = self._updates.check_once()
+        if result.update is None and result.ok:
+            self._notify("No hay una versión nueva")
+
+    def _open_update(self, _icon: pystray.Icon, _item: pystray.MenuItem) -> None:
+        update = self._available
+        if update is None:
+            return
+        try:
+            self.platform.open_url(update.url)
+        except Exception:
+            log.exception("No se pudo abrir la descarga %s", update.url)
+
+    def _notify(self, message: str) -> None:
+        icon = self._icon
+        if icon is None:
+            log.info("%s", message)
+            return
+        try:
+            icon.notify(message, "Dictado local")
+        except Exception:
+            log.info("Aviso de bandeja no disponible: %s", message)
 
     def _on_press(self) -> None:
         if not self._ready:
@@ -335,6 +399,7 @@ class DictadoApp:
 
     def _quit(self, icon: pystray.Icon, _item: pystray.MenuItem) -> None:
         log.info("Saliendo")
+        self._updates.stop()
         if self._limit is not None:
             self._limit.cancel()
         if self._listener is not None:

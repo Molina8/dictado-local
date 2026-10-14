@@ -31,3 +31,5 @@ indicator_scale: 1.0
 sound: true
 history: true
 start_with_windows: true
+# true avisa si hay una version nueva. No instala nada.
+check_updates: true
