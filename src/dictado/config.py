@@ -77,6 +77,7 @@ class Config:
     sound: bool = True
     history: bool = True
     start_with_windows: bool = True
+    check_updates: bool = True
 
     def resolved_model_dir(self) -> Path:
         if self.model_dir:
@@ -162,7 +163,8 @@ def ensure_user_config() -> Path:
         path.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
     else:
         path.write_text(
-            "hotkey: ctrl_r\nindicator: true\nsound: true\nhistory: true\nstart_with_windows: true\n",
+            "hotkey: ctrl_r\nindicator: true\nsound: true\nhistory: true\n"
+            "start_with_windows: true\ncheck_updates: true\n",
             encoding="utf-8",
         )
     return path

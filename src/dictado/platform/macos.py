@@ -360,6 +360,10 @@ def open_path(path) -> None:
     subprocess.Popen(["open", str(path)])
 
 
+def open_url(url: str) -> None:
+    _open_url(url)
+
+
 # ---------------------------------------------------------------------------
 # Indicador
 # ---------------------------------------------------------------------------
@@ -401,6 +405,17 @@ def start_icon(icon: pystray.Icon, setup=None) -> None:
     icon.run(setup)
 
 
+def refresh_menu(icon: pystray.Icon) -> None:
+    """Rebuild the status-item menu on the AppKit main thread."""
+    try:
+        import Foundation
+
+        Foundation.NSOperationQueue.mainQueue().addOperationWithBlock_(icon.update_menu)
+    except Exception:
+        log.exception("No se pudo refrescar el menu")
+        icon.update_menu()
+
+
 __all__ = [
     "AFPLAY",
     "MacClipboardError",
@@ -421,10 +436,12 @@ __all__ = [
     "open_accessibility_settings",
     "open_microphone_settings",
     "open_path",
+    "open_url",
     "open_settings",
     "paste_text",
     "play",
     "play_async",
+    "refresh_menu",
     "restore",
     "send_cmd_v",
     "set_text",

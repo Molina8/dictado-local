@@ -33,7 +33,8 @@ def test_windows_module_exposes_the_same_names(monkeypatch) -> None:
     module = _fresh(monkeypatch, "win32")
     assert module.paste_text and module.foreground_window and module.focus_window
     assert module.Indicator and module.apply_autostart and module.play_async
-    assert module.open_path and module.start_icon and module.open_settings
+    assert module.open_path and module.open_url and module.start_icon and module.open_settings
+    assert module.refresh_menu
     assert module.is_macos is False
 
 
@@ -43,7 +44,8 @@ def test_macos_module_exposes_the_same_names(monkeypatch) -> None:
     module = _fresh(monkeypatch, "darwin")
     assert module.paste_text and module.foreground_window and module.focus_window
     assert module.Indicator and module.apply_autostart and module.play_async
-    assert module.open_path and module.start_icon and module.open_settings
+    assert module.open_path and module.open_url and module.start_icon and module.open_settings
+    assert module.refresh_menu
     assert module.is_macos is True
 
 

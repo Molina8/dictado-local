@@ -25,6 +25,10 @@ def open_path(path) -> None:
     os.startfile(path)  # type: ignore[attr-defined]
 
 
+def open_url(url: str) -> None:
+    os.startfile(url)  # type: ignore[attr-defined]
+
+
 def open_settings(which: str) -> None:
     """Windows shows no permission panel; a no-op keeps the interface shared."""
 
@@ -34,6 +38,10 @@ def start_icon(icon: pystray.Icon, setup=None) -> None:
     icon.run(setup)
 
 
+def refresh_menu(icon: pystray.Icon) -> None:
+    icon.update_menu()
+
+
 __all__ = [
     "Indicator",
     "apply_autostart",
@@ -41,8 +49,10 @@ __all__ = [
     "foreground_window",
     "is_macos",
     "open_path",
+    "open_url",
     "open_settings",
     "paste_text",
     "play_async",
+    "refresh_menu",
     "start_icon",
 ]
