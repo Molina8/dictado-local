@@ -117,7 +117,7 @@ app = BUNDLE(
     name="DictadoLocal.app",
     icon=str(ROOT / "assets" / "dictado.icns"),
     bundle_identifier="com.molina8.dictadolocal",
-    version="0.2.2",
+    version="0.2.3",
     info_plist={
         "NSMicrophoneUsageDescription": "Dictado local necesita el microfono para transcribir tu voz en el equipo.",
         "NSAppleEventsUsageDescription": "Dictado local envia Cmd+V a la app activa para pegar la transcripcion.",
