@@ -44,10 +44,41 @@ def _fetch_mlx(name: str, output_dir: Path, local_files_only: bool = False):
         raise RuntimeError("huggingface_hub no esta disponible") from exc
     if Path(name).is_dir():
         return Path(name)
-    dest = snapshot_download(repo_id=name, local_files_only=False)
-    if dest and Path(dest).resolve() != output_dir.resolve():
-        _mirror(Path(dest), output_dir)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_download(repo_id=name, local_dir=str(output_dir))
     return output_dir
+
+
+def model_dest(name: str, model_dir: Path) -> Path:
+    """Folder a model lives in. Must match `Config.model_path` for repo ids.
+
+    mlx-community ids keep their "mlx-community/" prefix so the app finds
+    them at `models/mlx-community/<repo>`; other names keep the basename.
+    """
+    if _is_mlx_repo(name) and "/" in name:
+        return model_dir / name
+    return model_dir / Path(name).name
+
+
+def migrate_legacy_mlx_dirs(names: list[str], model_dir: Path) -> None:
+    """v0.2.2 saved mlx repos to models/<basename>; move them under their id."""
+    import shutil
+
+    for name in names:
+        if not (_is_mlx_repo(name) and "/" in name):
+            continue
+        old = model_dir / Path(name).name
+        new = model_dir / name
+        if model_ready(old) and not model_ready(new):
+            try:
+                new.parent.mkdir(parents=True, exist_ok=True)
+                if new.exists():
+                    shutil.rmtree(new)
+                shutil.move(str(old), str(new))
+                log.info("Modelo movido de %s a %s", old, new)
+            except Exception:
+                log.exception("No se pudo mover %s a %s", old, new)
 
 
 def _mirror(source: Path, dest: Path) -> None:
@@ -66,22 +97,22 @@ def download_models(names: list[str], model_dir: Path, fetch=None) -> list[Path]
     os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
     os.environ["TQDM_DISABLE"] = "1"
     model_dir.mkdir(parents=True, exist_ok=True)
-    if fetch is None:
-        if any(_is_mlx_repo(name) for name in names):
-            fetch = _fetch_mlx
-        else:
-            from faster_whisper.utils import download_model as fetch
-
     saved: list[Path] = []
     for name in names:
-        dest = model_dir / Path(name).name
+        fetch_one = fetch
+        if fetch_one is None:
+            if _is_mlx_repo(name):
+                fetch_one = _fetch_mlx
+            else:
+                from faster_whisper.utils import download_model as fetch_one
+        dest = model_dest(name, model_dir)
         if model_ready(dest):
             log.info("El modelo %s ya esta en %s", name, dest)
             saved.append(dest)
             continue
         dest.mkdir(parents=True, exist_ok=True)
         _say(f"Descargando {name} en {dest}")
-        result = fetch(name, output_dir=str(dest), local_files_only=False)
+        result = fetch_one(name, output_dir=str(dest), local_files_only=False)
         if not model_ready(dest):
             # snapshot_download may land elsewhere; mirror if needed
             if isinstance(result, Path) and result.resolve() != dest.resolve():

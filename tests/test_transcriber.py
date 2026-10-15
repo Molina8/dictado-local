@@ -146,7 +146,7 @@ def test_models_for_device_skips_the_gpu_model_without_cuda() -> None:
     if sys.platform == "darwin":
         from dictado.backends import MLX_FALLBACK_ID, MLX_MODEL_ID
 
-        assert models_for_device(config, False) == [MLX_MODEL_ID, MLX_FALLBACK_ID]
+        assert models_for_device(config, False) == [MLX_MODEL_ID, MLX_FALLBACK_ID, "small"]
         assert models_for_device(Config(device="cpu"), False) == ["small"]
         return
     assert models_for_device(config, False) == ["small"]

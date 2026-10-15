@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw
 
 from dictado.backends import BACKEND_MLX, select_backend
 from dictado.config import Config, default_log_path, ensure_user_config, load_config
-from dictado.download_model import download_best_effort, model_ready
+from dictado.download_model import download_best_effort, migrate_legacy_mlx_dirs, model_ready
 from dictado.history import append_history, history_path, transcript_record
 from dictado.hotkey import HotkeyMatcher, listen
 from dictado.permissions import PermissionPrompt, microphone_permission_denied
@@ -171,6 +171,7 @@ class DictadoApp:
 
     def _ensure_models(self) -> None:
         wanted = models_for_device(self.config, self._cuda_ok())
+        migrate_legacy_mlx_dirs(wanted, self.config.resolved_model_dir())
         missing = [name for name in wanted if name and not model_ready(self.config.model_path(name))]
         if not missing:
             return

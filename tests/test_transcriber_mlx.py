@@ -120,9 +120,9 @@ def test_models_for_device_on_darwin_uses_mlx_repo_ids(monkeypatch) -> None:
     from dictado.transcriber import models_for_device
 
     config = Config()
-    assert models_for_device(config, cuda_ok=False) == [MLX_MODEL_ID, MLX_FALLBACK_ID]
+    assert models_for_device(config, cuda_ok=False) == [MLX_MODEL_ID, MLX_FALLBACK_ID, "small"]
     assert models_for_device(Config(device="cpu"), cuda_ok=False) == ["small"]
-    assert models_for_device(Config(device="mlx"), cuda_ok=False) == [MLX_MODEL_ID, MLX_FALLBACK_ID]
+    assert models_for_device(Config(device="mlx"), cuda_ok=False) == [MLX_MODEL_ID, MLX_FALLBACK_ID, "small"]
 
 
 def test_mlx_load_failure_falls_back_to_cpu_int8(mlx_env, monkeypatch, tmp_path, caplog) -> None:

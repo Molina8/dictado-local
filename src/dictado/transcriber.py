@@ -102,6 +102,10 @@ def cuda_available() -> bool:
         return False
 
 
+def _is_repo_or_path(name: str) -> bool:
+    return "/" in name or "\\" in name
+
+
 def models_for_device(config: Config, cuda_ok: bool) -> list[str]:
     """Weights to fetch before load(). Without CUDA, only the CPU model."""
     if sys.platform == "darwin":
@@ -116,6 +120,15 @@ def models_for_device(config: Config, cuda_ok: bool) -> list[str]:
             # CPU on darwin never runs mlx; fetch only the faster-whisper
             # fallback (its folder name stays the friendly name).
             wanted = [config.model_fallback]
+        if (
+            config.device in {"auto", "mlx"}
+            and config.model_fallback
+            and config.model_fallback not in wanted
+            and not _is_repo_or_path(config.model_fallback)
+        ):
+            # The CPU int8 fallback is faster-whisper; fetch its weights too
+            # (best effort) so it can actually load if mlx fails.
+            wanted.append(config.model_fallback)
         if not wanted and config.model:
             wanted.append(config.model)
         return wanted

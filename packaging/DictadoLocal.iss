@@ -2,7 +2,7 @@
 ; the app downloads them on first launch.
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.2.2"
+  #define MyAppVersion "0.2.3"
 #endif
 #define MyAppVersionInfo MyAppVersion + ".0"
 #define MyAppName "Dictado local"
