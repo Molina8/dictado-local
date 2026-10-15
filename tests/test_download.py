@@ -71,9 +71,18 @@ def test_mlx_download_lands_where_config_looks(tmp_path: Path) -> None:
 
 
 def test_fetch_mlx_uses_local_dir(tmp_path: Path, monkeypatch) -> None:
-    import huggingface_hub
+    import sys
+    import types
 
     from dictado import download_model as dm
+
+    # Fake module + restored env: importing the real huggingface_hub here
+    # (with HF_HUB_OFFLINE=0) would freeze it online for later tests.
+    huggingface_hub = types.ModuleType("huggingface_hub")
+    monkeypatch.setitem(sys.modules, "huggingface_hub", huggingface_hub)
+    for var in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_TELEMETRY",
+                "HF_HUB_DISABLE_PROGRESS_BARS", "TQDM_DISABLE"):
+        monkeypatch.setenv(var, "1")
 
     seen = {}
 
@@ -81,7 +90,7 @@ def test_fetch_mlx_uses_local_dir(tmp_path: Path, monkeypatch) -> None:
         seen.update(repo_id=repo_id, local_dir=local_dir)
         return local_dir
 
-    monkeypatch.setattr(huggingface_hub, "snapshot_download", fake_snapshot)
+    huggingface_hub.snapshot_download = fake_snapshot
     dest = tmp_path / "mlx-community" / "whisper-small-mlx"
     dm._fetch_mlx("mlx-community/whisper-small-mlx", dest)
     assert seen == {"repo_id": "mlx-community/whisper-small-mlx", "local_dir": str(dest)}
